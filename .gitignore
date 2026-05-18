@@ -1,0 +1,10 @@
+# LibreOffice lock files
+.~lock.*#
+
+# Archives (Quellcode ist im Repo)
+*.zip
+
+# Temporäre Dateien
+*.tmp
+Thumbs.db
+desktop.ini

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Server AlwaysOn Setup Tool – Dokumentation</title>
+<style>
+  :root {
+    --blue:   #1a5276;
+    --lblue:  #2471a3;
+    --accent: #d35400;
+    --green:  #1e8449;
+    --red:    #922b21;
+    --yellow: #9a6700;
+    --bg:     #ffffff;
+    --text:   #2c3e50;
+    --dim:    #566573;
+    --border: #d5d8dc;
+    --codebg: #f4f6f7;
+    --warnbg: #fef9e7;
+    --tipbg:  #eafaf1;
+    --mono:   'Cascadia Code','Consolas','Courier New',monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #fff;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+  .article {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 40px 80px;
+  }
+  .doc-header {
+    border-bottom: 3px solid var(--blue);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .doc-meta {
+    font-size: 12px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 10px; font-weight: 600;
+  }
+  .doc-meta span { color: var(--accent); }
+  .doc-title { font-size: 30px; font-weight: 700; color: var(--blue); line-height: 1.25; margin-bottom: 10px; }
+  .doc-subtitle { font-size: 16px; color: var(--dim); margin-bottom: 20px; }
+  .doc-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .doc-pill {
+    font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 3px; border: 1px solid;
+    font-family: var(--mono);
+  }
+  .pill-blue  { color: var(--blue);  border-color: var(--blue);  background: #eaf2ff; }
+  .pill-green { color: var(--green); border-color: var(--green); background: #eafaf1; }
+  .pill-grey  { color: var(--dim);   border-color: var(--border);background: #f8f9f9; }
+  h1 {
+    font-size: 22px; font-weight: 700; color: var(--blue);
+    margin: 44px 0 14px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+  }
+  h2 { font-size: 17px; font-weight: 700; color: var(--text); margin: 32px 0 10px; }
+  h3 { font-size: 15px; font-weight: 700; color: var(--accent); margin: 24px 0 8px; }
+  p { margin-bottom: 14px; }
+  a { color: var(--lblue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { margin: 8px 0 16px 24px; }
+  li { margin-bottom: 5px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 13.5px; }
+  th { background: var(--blue); color: #fff; padding: 9px 14px; text-align: left; font-size: 13px; font-weight: 600; }
+  td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(odd) td  { background: #f8f9fa; }
+  tr:nth-child(even) td { background: #fff; }
+  tr:hover td { background: #eaf2ff; }
+  td code { font-family: var(--mono); font-size: 12px; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--codebg); padding: 1px 6px; border-radius: 3px; color: #2e4057; border: 1px solid #e0e0e0; }
+  pre {
+    background: #1e1e2e; color: #cdd6f4;
+    padding: 18px 20px; border-radius: 6px;
+    overflow-x: auto; font-family: var(--mono);
+    font-size: 13px; line-height: 1.65;
+    margin: 14px 0 22px;
+  }
+  pre .cm { color: #6c7086; }
+  pre .ck { color: #89b4fa; }
+  pre .cs { color: #a6e3a1; }
+  pre .cn { color: #cba6f7; }
+  .box { border-left: 4px solid; border-radius: 0 6px 6px 0; padding: 14px 18px; margin: 20px 0 24px; font-size: 14px; }
+  .box-warn { background: var(--warnbg); border-color: #f0b429; }
+  .box-tip  { background: var(--tipbg);  border-color: var(--green); }
+  .box-info { background: #eaf2ff;        border-color: var(--lblue); }
+  .box-title { font-weight: 700; margin-bottom: 4px; font-size: 14px; }
+  .box-warn .box-title { color: var(--yellow); }
+  .box-tip  .box-title { color: var(--green); }
+  .box-info .box-title { color: var(--blue); }
+  .steps { margin: 16px 0 24px; }
+  .step-row { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
+  .step-num {
+    min-width: 30px; height: 30px; border-radius: 50%;
+    background: var(--blue); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; flex-shrink: 0; margin-top: 3px;
+  }
+  .step-body { flex: 1; padding-top: 2px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  @media (max-width: 600px) {
+    .article { padding: 24px 18px 48px; }
+    .doc-title { font-size: 22px; }
+  }
+  @media print {
+    pre { background: #f4f4f4; color: #000; }
+  }
+</style>
+</head>
+<body>
+<div class="article">
+
+<div class="doc-header">
+  <div class="doc-meta">DBA-Team &nbsp;·&nbsp; <span>Intern</span> &nbsp;·&nbsp; Version 1.0.0 &nbsp;·&nbsp; April 2026</div>
+  <div class="doc-title">SQL Server AlwaysOn Setup Tool</div>
+  <div class="doc-subtitle">Vollautomatische Konfiguration von Always On Availability Groups auf Windows Server Failover Clustern</div>
+  <div class="doc-pills">
+    <span class="doc-pill pill-blue">SQL Server 2022 / 2025</span>
+    <span class="doc-pill pill-blue">Windows Server 2022</span>
+    <span class="doc-pill pill-green">PowerShell 5.1+</span>
+    <span class="doc-pill pill-grey">FailoverClusters RSAT</span>
+    <span class="doc-pill pill-grey">dbaTools &gt;= 2.0</span>
+  </div>
+</div>
+
+<p>Das <strong>SQL Server AlwaysOn Setup Tool</strong> ist ein PowerShell-Script mit WinForms-Oberfläche, das alle Schritte zur Einrichtung einer <strong>Always On Availability Group (AG)</strong> auf einem bestehenden Windows Server Failover Cluster (WSFC) automatisiert. Es liest Cluster- und SQL-Informationen automatisch ein, präsentiert diese im PropertyGrid zur Überprüfung, und führt nach Bestätigung alle Konfigurationsschritte durch.</p>
+
+<div class="box box-tip">
+  <div class="box-title">⚡ Empfehlung: SPNs vor dem Setup setzen</div>
+  Wenn die Service Principal Names (SPNs) für das SQL-Dienstkonto im Active Directory <strong>vor dem Setup</strong> registriert sind, läuft das Tool vollautomatisch durch – ohne manuellen Eingriff. Fehlen SPNs, pausiert das Tool und erfordert einen zusätzlichen manuellen Schritt. Details in <a href="#spn">Abschnitt 4 – SPNs</a>.
+</div>
+
+<hr>
+
+<h1>1. Übersicht und Konfigurationsschritte</h1>
+
+<p>Das Tool führt die folgenden neun Schritte in dieser Reihenfolge aus. Übersprungene Schritte werden im Log ausgewiesen.</p>
+
+<table>
+  <tr><th>Schritt</th><th>Bezeichnung</th><th>Beschreibung</th></tr>
+  <tr><td>1</td><td>SQL-Service-Konto</td><td>Optional: Konto und Passwort per WMI auf allen Nodes ändern und Dienst neu starten</td></tr>
+  <tr><td>2</td><td>HADR aktivieren</td><td>Always On per <code>sp_configure 'hadr enabled', 1</code> auf allen Nodes; Dienst-Neustart mit aktivem Bereitschaftstest</td></tr>
+  <tr><td>3</td><td>Endpoint erstellen</td><td>Datenbankspiegelungs-Endpoint (Port 5022) per T-SQL anlegen und starten</td></tr>
+  <tr><td>4</td><td>CONNECT-Berechtigung</td><td>Windows-Login anlegen, <code>GRANT CONNECT ON ENDPOINT</code> auf alle Nodes</td></tr>
+  <tr><td>5</td><td>Testdatenbank</td><td>Datenbank anlegen, Recovery-Modell FULL setzen, initiales Full-Backup erstellen</td></tr>
+  <tr><td>6</td><td>Availability Group</td><td>AG per reinem T-SQL (<code>sqlcmd</code>) anlegen, Replicas beitreten, Autoseed aktivieren</td></tr>
+  <tr><td>7</td><td>Listener</td><td>AG-Listener mit IP-Adresse und Port per <code>ALTER AVAILABILITY GROUP</code></td></tr>
+  <tr><td>8</td><td>Status</td><td>AG-Synchronisierungsstatus und Replica-Rollen per DMV ausgeben</td></tr>
+  <tr><td>9</td><td>SPN-Prüfung</td><td>Fehlende MSSQLSvc-SPNs erkennen, setspn-Befehle als Textdatei für das AD-Team exportieren</td></tr>
+</table>
+
+<hr>
+
+<h1>2. Voraussetzungen</h1>
+
+<h2>Infrastruktur</h2>
+<ul>
+  <li>Windows Server 2022 oder neuer auf allen Cluster-Nodes</li>
+  <li>SQL Server 2022 oder neuer (Enterprise oder Standard Edition)</li>
+  <li>Bestehender Windows Server Failover Cluster (WSFC) mit 2 oder 3 Nodes</li>
+  <li>Gemeinsamer Backup-Share (UNC), beschreibbar von allen Nodes</li>
+  <li>Port 5022 zwischen allen Nodes geöffnet (HADR Endpoint)</li>
+</ul>
+
+<h2>Berechtigungen</h2>
+<ul>
+  <li>Lokaler Administrator auf dem ausführenden Cluster-Node</li>
+  <li>SQL Server <code>sysadmin</code>-Rolle auf allen Nodes</li>
+  <li>Domänen-Leserecht (für SPN-Prüfung in Schritt 9)</li>
+  <li>PowerShell als Administrator (<code>#Requires -RunAsAdministrator</code>)</li>
+</ul>
+
+<h2>PowerShell-Module</h2>
+
+<table>
+  <tr><th>Modul</th><th>Installation</th><th>Hinweis</th></tr>
+  <tr><td><code>FailoverClusters</code></td><td><code>RSAT-Clustering-PowerShell</code></td><td>Wird vom Script automatisch installiert</td></tr>
+  <tr><td><code>dbaTools &gt;= 2.0</code></td><td><code>Install-Module dbatools</code></td><td>Wird automatisch installiert; bereits geladene Version wird nicht neu importiert</td></tr>
+</table>
+
+<div class="box box-info">
+  <div class="box-title">ℹ dbaTools-Nutzung bewusst minimiert</div>
+  Das Tool verwendet aus dbaTools nur <code>Invoke-DbaQuery</code> (T-SQL-Ausführung mit Credential-Support) und <code>Connect-DbaInstance</code> (Verbindungstest). Alle anderen Operationen laufen über direktes T-SQL (<code>sqlcmd</code>), WMI (<code>Win32_Service</code>) oder FailoverClusters-Cmdlets – um Versionsabhängigkeiten und interne Seiteneffekte zu vermeiden.
+</div>
+
+<hr>
+
+<h1>3. Bedienung</h1>
+
+<h2>Start</h2>
+<ol>
+  <li>PowerShell ISE oder PowerShell 5.1+ als Administrator öffnen</li>
+  <li>Script <code>SetupAlwaysOn.ps1</code> ausführen</li>
+  <li>Das Tool prüft Module, liest Cluster-Informationen automatisch ein</li>
+  <li>Erkannte Werte erscheinen im PropertyGrid (linke Seite der Oberfläche)</li>
+</ol>
+
+<h2>PropertyGrid – Konfigurationsfelder</h2>
+
+<table>
+  <tr><th>Feld</th><th>Kategorie</th><th>Beschreibung</th></tr>
+  <tr><td>AG-Name</td><td>3 – AG</td><td>Name der Availability Group (= WSFC-Rollenname)</td></tr>
+  <tr><td>Listener-Name</td><td>3 – AG</td><td>DNS-Name des AG-Listeners</td></tr>
+  <tr><td>Listener-IP</td><td>3 – AG</td><td>IP-Adresse des Listeners (aus Cluster übernommen)</td></tr>
+  <tr><td>Listener-Port</td><td>3 – AG</td><td>TCP-Port des Listeners (Standard: 1433)</td></tr>
+  <tr><td>Endpoint-Port</td><td>3 – AG</td><td>HADR Endpoint Port (Standard: 5022)</td></tr>
+  <tr><td>Failover-Modus</td><td>3 – AG</td><td><code>Automatic</code> = synchron mit auto. Failover; <code>Manual</code> = asynchron</td></tr>
+  <tr><td>Backup-Präferenz</td><td>3 – AG</td><td><code>Primary</code> / <code>Secondary</code> / <code>PreferSecondary</code> / <code>None</code> (Standard: Primary)</td></tr>
+  <tr><td>Test-Datenbank</td><td>3 – AG</td><td>Name der in die AG aufzunehmenden Datenbank</td></tr>
+  <tr><td>Backup-Share</td><td>4 – Backup</td><td>UNC-Pfad für das initiale Full-Backup</td></tr>
+  <tr><td>Service-Konto</td><td>2 – Dienst</td><td>SQL-Dienstkonto (automatisch erkannt, optional änderbar)</td></tr>
+</table>
+
+<h2>Ablauf nach dem Start</h2>
+
+<div class="steps">
+  <div class="step-row"><div class="step-num">1</div><div class="step-body">Alle Felder im PropertyGrid prüfen und ggf. anpassen</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-body">Primary-Node in der Dropdown-Liste wählen</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-body">Schaltfläche <strong>Konfiguration starten</strong> klicken</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-body">Fortschritt im Log-Bereich (rechts) farbkodiert in Echtzeit verfolgen</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-body">Falls SPNs fehlen: <strong>Weiter</strong>-Button nach manuellem SQL-Login-Setup klicken (→ Abschnitt 4)</div></div>
+  <div class="step-row"><div class="step-num">6</div><div class="step-body">Am Ende: SPN-Anforderungsdatei an das AD-Team weiterleiten</div></div>
+</div>
+
+<hr>
+
+<h1 id="spn">4. Service Principal Names (SPNs)</h1>
+
+<p>Service Principal Names (SPNs) sind Einträge im Active Directory, die SQL Server ermöglichen, Kerberos-Authentifizierung zu verwenden. Fehlen die SPNs, erscheint der Fehler <em>„Cannot generate SSPI context"</em> und Windows-Auth schlägt fehl.</p>
+
+<div class="box box-warn">
+  <div class="box-title">⚠ SPNs vor dem Setup setzen – dringend empfohlen</div>
+  Wenn SPNs fehlen, pausiert das Tool und fordert den Anwender auf, ein temporäres SQL-Login manuell per SSMS lokal auf jedem betroffenen Node anzulegen. Dieser Schritt entfällt vollständig, wenn die SPNs bereits im Active Directory registriert sind.
+</div>
+
+<h2>Auswirkung fehlender SPNs</h2>
+
+<table>
+  <tr><th>Situation</th><th>Auswirkung</th><th>Ablauf</th></tr>
+  <tr>
+    <td>SPNs gesetzt <strong style="color:green">✓</strong></td>
+    <td>Windows-Auth (Kerberos) auf allen Nodes</td>
+    <td>Vollautomatischer Durchlauf, kein manueller Eingriff</td>
+  </tr>
+  <tr>
+    <td>SPNs fehlen <strong style="color:#c0392b">✗</strong></td>
+    <td>SSPI-Fehler auf betroffenen Nodes</td>
+    <td>Tool pausiert → T-SQL-Block anzeigen → manuell ausführen → Weiter → Fortsetzung per SQL-Auth</td>
+  </tr>
+</table>
+
+<h2>Benötigte SPNs</h2>
+
+<p>Je Node und für den Listener-Namen sind zwei SPNs erforderlich (Kurzname und FQDN):</p>
+
+<pre><span class="cm"># Je SQL-Node – Kurzname und FQDN</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE01:1433</span>              <span class="cn">DOMAIN\SQLServiceAccount</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE01.domain.com:1433</span>   <span class="cn">DOMAIN\SQLServiceAccount</span>
+
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE02:1433</span>              <span class="cn">DOMAIN\SQLServiceAccount</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE02.domain.com:1433</span>   <span class="cn">DOMAIN\SQLServiceAccount</span>
+
+<span class="cm"># AG-Listener</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/AG-LISTENER:1433</span>            <span class="cn">DOMAIN\SQLServiceAccount</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/AG-LISTENER.domain.com:1433</span> <span class="cn">DOMAIN\SQLServiceAccount</span>
+
+<span class="cm"># Prüfung nach dem Setzen:</span>
+<span class="ck">setspn</span> -L <span class="cn">DOMAIN\SQLServiceAccount</span></pre>
+
+<p>Das Tool generiert in Schritt 9 automatisch die konkreten setspn-Befehle und speichert sie als Textdatei:<br>
+<code>C:\System\WinSrvLog\MSSQL\AlwaysOn_SPN_ADTeam_&lt;Datum&gt;.txt</code></p>
+
+<h2>Ablauf wenn SPNs fehlen</h2>
+
+<div class="steps">
+  <div class="step-row"><div class="step-num">1</div><div class="step-body">Tool erkennt automatisch welche Nodes nicht per Kerberos erreichbar sind</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-body">T-SQL-Block zur manuellen Login-Anlage wird im Log angezeigt (fertig zum Kopieren)</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-body">Anwender führt das T-SQL per SSMS lokal auf jedem betroffenen Node aus (per RDP)</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-body">Klick auf <strong>Weiter</strong> – Tool prüft SQL-Auth-Verbindung auf allen Nodes</div></div>
+  <div class="step-row"><div class="step-num">5</div><div class="step-body">Temporäres Login wird am Ende automatisch entfernt, Policy reaktiviert</div></div>
+</div>
+
+<hr>
+
+<h1>5. Ausgaben und Logdateien</h1>
+
+<h2>Farbcodierung im Live-Log</h2>
+
+<table>
+  <tr><th>Farbe</th><th>Bedeutung</th></tr>
+  <tr><td>Blau (fett)</td><td>Abschnittsüberschrift (<code>=== ... ===</code>)</td></tr>
+  <tr><td>Hellgrün (fett)</td><td>Erfolg – Aktion erfolgreich abgeschlossen</td></tr>
+  <tr><td>Gelb</td><td>Warnung – Aktion übersprungen oder Hinweis</td></tr>
+  <tr><td>Rot (fett)</td><td>Fehler – Aktion fehlgeschlagen</td></tr>
+  <tr><td>Hellgrau</td><td>Information – allgemeine Statusmeldung</td></tr>
+</table>
+
+<h2>Gespeicherte Dateien</h2>
+
+<p>Alle Dateien werden automatisch unter <code>C:\System\WinSrvLog\MSSQL\</code> gespeichert.</p>
+
+<table>
+  <tr><th>Datei</th><th>Inhalt</th><th>Zeitpunkt</th></tr>
+  <tr><td><code>AlwaysOn_ClusterSettings_&lt;Datum&gt;.txt</code></td><td>Cluster-Konfiguration, AG-Parameter, Node-Status – Backup vor Änderungen</td><td>Vor Schritt 1</td></tr>
+  <tr><td><code>AlwaysOn_Setup_&lt;Datum&gt;.log</code></td><td>Vollständiges Text-Log aller Schritte mit Zeitstempeln</td><td>Nach Abschluss</td></tr>
+  <tr><td><code>AlwaysOn_Setup_&lt;Datum&gt;.rtf</code></td><td>Farbiges RTF-Log (über Schaltfläche im Tool speicherbar)</td><td>Manuell</td></tr>
+  <tr><td><code>AlwaysOn_SPN_ADTeam_&lt;Datum&gt;.txt</code></td><td>Fertige setspn-Befehle für das AD-Team mit Erklärung und Prüfbefehl</td><td>Schritt 9</td></tr>
+</table>
+
+<hr>
+
+<h1>6. Fehlerbehebung</h1>
+
+<table>
+  <tr><th>Fehlermeldung</th><th>Ursache</th><th>Lösung</th></tr>
+  <tr>
+    <td><code>Cannot generate SSPI context</code></td>
+    <td>SPNs für den Node fehlen im Active Directory</td>
+    <td>Kurzfristig: manuellen SQL-Login-Schritt im Tool durchführen. Langfristig: SPNs durch AD-Team setzen lassen</td>
+  </tr>
+  <tr>
+    <td><code>WSFC group … already exists</code></td>
+    <td>Überrest eines fehlgeschlagenen Setup-Versuchs</td>
+    <td>Tool bereinigt automatisch: <code>Remove-ClusterGroup</code> + Registry-Key <code>HadrAgNameToldMap</code> auf allen Nodes</td>
+  </tr>
+  <tr>
+    <td><code>Login failed for user AGSetup_…</code></td>
+    <td>SQL Server nicht im Mixed Mode oder Password-Policy blockiert</td>
+    <td>Mixed Mode in SSMS prüfen: Server Properties → Security → SQL Server and Windows Authentication mode</td>
+  </tr>
+  <tr>
+    <td><code>Backup-Verzeichnis nicht erreichbar</code></td>
+    <td>UNC-Pfad ungültig oder keine Schreibrechte</td>
+    <td>Pfad im PropertyGrid korrigieren; muss von allen Nodes beschreibbar sein</td>
+  </tr>
+  <tr>
+    <td><code>Endpoint-Port 5022 bereits belegt</code></td>
+    <td>Bestehender Endpoint oder Firewall blockiert den Port</td>
+    <td><code>SELECT * FROM sys.endpoints WHERE type=4</code> ausführen; Port im PropertyGrid anpassen</td>
+  </tr>
+  <tr>
+    <td><code>AG nach 60s noch nicht sichtbar</code></td>
+    <td>SQL Server nach HADR-Aktivierung noch nicht vollständig initialisiert</td>
+    <td>Tool wartet aktiv per <code>SELECT 1</code> (max. 2 Minuten). Bei Timeout Dienst manuell prüfen</td>
+  </tr>
+</table>
+
+<hr>
+
+<h1>7. Technische Details</h1>
+
+<h2>Verbindungsstrategie</h2>
+
+<p><strong>Einlesen:</strong> Windows-Auth per WMI für Dienst-Informationen; T-SQL für HADR-Status.<br>
+<strong>Konfiguration:</strong> Windows-Auth (Kerberos) auf allen Nodes testen. Bei SSPI-Fehler → temporäres SQL-Login mit kryptografisch zufälligem Passwort (28 Zeichen, <code>RNGCryptoServiceProvider</code>).<br>
+<strong>Cleanup:</strong> Temporäres Login nach Abschluss auf allen Nodes automatisch gelöscht, Policy reaktiviert.</p>
+
+<h2>AG-Anlage per sqlcmd</h2>
+
+<p>Für <code>CREATE AVAILABILITY GROUP</code> und alle AG-Join-Befehle wird <code>sqlcmd</code> direkt verwendet statt <code>Invoke-DbaQuery</code>. Grund: Nach dem Dienst-Neustart in Schritt 2 hält dbaTools intern gecachte Verbindungen, über die <code>sys.availability_groups</code> noch leer erscheint. <code>sqlcmd</code> öffnet bei jedem Aufruf eine frische TCP-Verbindung.</p>
+
+<h2>WSFC-Cleanup bei wiederholten Versuchen</h2>
+
+<p>Das Tool prüft vor der AG-Anlage ob eine verwaiste WSFC-Gruppe existiert und bereinigt automatisch:</p>
+<ol>
+  <li><code>Stop-ClusterGroup</code> + <code>Remove-ClusterGroup -RemoveResources -Force</code></li>
+  <li>Registry-Key <code>HKLM:\Cluster\HadrAgNameToldMap</code> auf allen Nodes per <code>Invoke-Command</code> bereinigen</li>
+</ol>
+
+<h2>Sicherheit</h2>
+<ul>
+  <li>Temporäres SQL-Login: kryptografisch zufälliges Passwort, ausschließlich T-SQL-sichere Sonderzeichen</li>
+  <li>Passwort wird nie in Logdateien gespeichert – nur im RTF-Fenster der laufenden Sitzung sichtbar</li>
+  <li>Policy <em>Enforce Password Policy</em> wird nur für die Dauer der Login-Anlage deaktiviert</li>
+  <li>Login und Policy werden am Ende garantiert zurückgesetzt</li>
+</ul>
+
+</div>
+</body>
+</html>
