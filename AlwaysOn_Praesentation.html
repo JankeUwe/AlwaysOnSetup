@@ -899,8 +899,20 @@ REPLICA ON
         <td>SQL Server nicht vollständig bereit</td>
         <td class="ok">Tool wartet aktiv bis 120s. Danach Dienst manuell prüfen</td>
       </tr>
+      <tr>
+        <td><code>Endpoint-Eigentümer ungültig</code></td>
+        <td>Temporärer <code>AGSetup_*</code>-Login war Eigentümer und wurde gelöscht</td>
+        <td class="ok"><code>AUTHORIZATION</code> auf Service-Konto gesetzt — tritt nicht mehr auf</td>
+      </tr>
     </tbody>
   </table>
+  <div class="alert alert-g" style="margin-top:.65rem;">
+    <strong>✓ Endpoint-Eigentümer — wie es funktioniert</strong>
+    Ohne <code>AUTHORIZATION</code>-Klausel setzt SQL Server den <em>aktuell ausführenden Login</em> als Endpoint-Eigentümer.
+    Im SQL-Auth-Fallback (fehlende SPNs) wäre das der temporäre <code>AGSetup_XXXXXXXX</code>-Login —
+    der am Ende von Schritt 9 gelöscht wird. Ergebnis: Endpoint existiert weiter, sein Eigentümer-Principal nicht mehr.
+    Das Tool setzt daher explizit <code>AUTHORIZATION [&lt;ServiceKonto&gt;]</code> — oder <code>sa</code> als Fallback.
+  </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════
