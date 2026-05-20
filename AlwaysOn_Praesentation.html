@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlwaysOn Setup Tool – Präsentation</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+<style>
+/* ── Basis ─────────────────────────────────────────────── */
+:root {
+  --blue:   #2e86c1;
+  --lblue:  #5dade2;
+  --green:  #4ade80;
+  --yellow: #f0c040;
+  --red:    #f87171;
+  --dark:   #060f20;
+  --card:   rgba(255,255,255,0.05);
+  --bd:     rgba(46,134,193,0.3);
+}
+.reveal { font-family: 'Segoe UI', system-ui, sans-serif; }
+.reveal .slides section { text-align: left; }
+.reveal h1, .reveal h2, .reveal h3 { text-transform: none; letter-spacing: 0; }
+.reveal h1 { font-size: 1.9rem; color: var(--lblue); font-weight: 800; margin-bottom: .5rem; }
+.reveal h2 { font-size: 1.45rem; color: #fff; font-weight: 700; margin-bottom: .4rem; }
+.reveal h3 { font-size: 1.05rem; color: var(--lblue); font-weight: 600; margin-bottom: .3rem; }
+.reveal p, .reveal li { font-size: .88rem; color: #cbd5e1; line-height: 1.65; }
+.reveal ul { margin-left: 1.2rem; }
+.reveal li { margin-bottom: .35rem; }
+.reveal code { font-family: Consolas, monospace; font-size: .8rem;
+  background: rgba(255,255,255,.1); padding: 1px 6px; border-radius: 3px; color: #9cdcfe; }
+.reveal pre { background: #0d1117; border-radius: 8px; padding: 1rem 1.2rem;
+  font-family: Consolas, monospace; font-size: .78rem; line-height: 1.7;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5); margin: .6rem 0; }
+.reveal pre .ck  { color: #9cdcfe; }
+.reveal pre .cs  { color: #4ade80; }
+.reveal pre .cc  { color: #6272a4; }
+.reveal pre .cw  { color: #f0c040; }
+.reveal pre .ce  { color: #f87171; }
+
+/* ── Eyebrow / Badge ───────────────────────────────────── */
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: rgba(46,134,193,.15); border: 1px solid rgba(46,134,193,.4);
+  color: var(--lblue); font-size: .68rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  padding: .22rem .75rem; border-radius: 999px; margin-bottom: .75rem;
+}
+.eyebrow::before { content:''; width:6px; height:6px;
+  background:#28c840; border-radius:50%; box-shadow:0 0 6px #28c840; }
+
+/* ── Titelfolie ────────────────────────────────────────── */
+#slide-title { text-align: center;
+  background: radial-gradient(ellipse at 30% 60%, rgba(46,134,193,.15) 0%, transparent 65%),
+              linear-gradient(160deg, #060f20 0%, #0b1e3d 100%);
+  border-radius: 12px; padding: 3rem 2rem; }
+#slide-title h1 { font-size: 2.4rem; line-height: 1.15; margin-bottom: .6rem; }
+#slide-title h1 em { font-style:normal;
+  background: linear-gradient(135deg,#5dade2,#a8d8f0);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+#slide-title .sub { color:#94a8c0; font-size:.95rem; margin-bottom:1.5rem; }
+.pill-row { display:flex; justify-content:center; gap:.5rem; flex-wrap:wrap; margin-top:1rem; }
+.pill { font-size:.7rem; font-weight:700; padding:.25rem .75rem;
+  border-radius:999px; border:1px solid; }
+.pill-b { color:var(--lblue); border-color:rgba(93,173,226,.4); background:rgba(46,134,193,.12); }
+.pill-g { color:var(--green); border-color:rgba(74,222,128,.4); background:rgba(74,222,128,.1); }
+
+/* ── Layouts ───────────────────────────────────────────── */
+.cols2 { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; margin-top:.5rem; }
+.cols3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.9rem; margin-top:.5rem; }
+.col  { background:var(--card); border:1px solid var(--bd);
+  border-radius:10px; padding:.9rem 1rem; }
+.col h3 { margin-bottom:.4rem; }
+
+/* ── Cards ─────────────────────────────────────────────── */
+.card { background:var(--card); border:1px solid var(--bd);
+  border-radius:10px; padding:.85rem 1rem; margin-bottom:.55rem; }
+.card-ico { font-size:1.3rem; margin-bottom:.2rem; }
+.card h3  { font-size:.88rem; color:#fff; font-weight:700; margin:0 0 .2rem; }
+.card p   { font-size:.78rem; color:#94a8c0; margin:0; }
+
+/* ── Steps ─────────────────────────────────────────────── */
+.steps { display:flex; flex-direction:column; gap:.45rem; margin-top:.4rem; }
+.step  { display:flex; align-items:flex-start; gap:.75rem; }
+.step-n { width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,#2e86c1,#1a5f8a);
+  color:#fff; font-weight:800; font-size:.8rem;
+  display:flex; align-items:center; justify-content:center; }
+.step-body { padding-top:.25rem; }
+.step-body strong { color:#fff; font-size:.84rem; }
+.step-body p { font-size:.78rem; color:#94a8c0; margin:.1rem 0 0; }
+
+/* ── Tabelle ───────────────────────────────────────────── */
+.dtbl { width:100%; border-collapse:collapse; font-size:.78rem; margin-top:.5rem; }
+.dtbl th { background:rgba(46,134,193,.2); color:var(--lblue);
+  font-weight:700; padding:.45rem .7rem; text-align:left;
+  border-bottom:1px solid rgba(46,134,193,.3); }
+.dtbl td { padding:.4rem .7rem; border-bottom:1px solid rgba(255,255,255,.06); color:#cbd5e1; }
+.dtbl tr:last-child td { border-bottom:none; }
+.dtbl tr:hover td { background:rgba(255,255,255,.03); }
+.dtbl code { font-size:.73rem; }
+.ok  { color:var(--green); font-weight:600; }
+.warn{ color:var(--yellow); font-weight:600; }
+.err { color:var(--red); font-weight:600; }
+
+/* ── Alert Boxen ───────────────────────────────────────── */
+.alert { border-left:3px solid; border-radius:0 8px 8px 0;
+  padding:.65rem 1rem; margin:.5rem 0; font-size:.8rem; }
+.alert strong { display:block; margin-bottom:.2rem; }
+.alert-w { background:rgba(240,192,64,.08);  border-color:var(--yellow); color:#fde68a; }
+.alert-g { background:rgba(74,222,128,.08);  border-color:var(--green);  color:#86efac; }
+.alert-b { background:rgba(46,134,193,.1);   border-color:var(--blue);   color:#93c5fd; }
+.alert-r { background:rgba(248,113,113,.08); border-color:var(--red);    color:#fca5a5; }
+
+/* ── Abschnitts-Trenner ────────────────────────────────── */
+.section-slide {
+  background: radial-gradient(ellipse at 70% 30%, rgba(46,134,193,.18) 0%, transparent 65%),
+              linear-gradient(160deg,#060f20 0%,#0b1e3d 100%);
+  border-radius:12px; display:flex; flex-direction:column;
+  justify-content:center; align-items:center; text-align:center;
+  min-height:60vh; padding:2rem; }
+.section-slide h2 { font-size:2rem; margin-bottom:.5rem; }
+.section-slide p  { color:#94a8c0; font-size:.95rem; }
+
+/* ── GUI Mockup ────────────────────────────────────────── */
+.wf-mock { background:#f0f0f0; border-radius:6px; overflow:hidden;
+  font-family:'Segoe UI',sans-serif; font-size:.73rem;
+  box-shadow:0 6px 28px rgba(0,0,0,.6); }
+.wf-tbar { background:#0078d7; color:#fff; padding:4px 10px;
+  display:flex; align-items:center; gap:7px; }
+.wf-tbar span { flex:1; font-size:.72rem; font-weight:600; }
+.wf-btns { display:flex; gap:3px; }
+.wf-btn-w { width:20px; height:16px; background:rgba(255,255,255,.15);
+  border:1px solid rgba(255,255,255,.3); border-radius:2px;
+  display:flex; align-items:center; justify-content:center; font-size:.65rem; }
+.wf-x { background:#e74c3c; border-color:#c0392b; }
+.wf-content { display:grid; grid-template-columns:230px 1fr; min-height:200px; }
+.wf-left { border-right:1px solid #ccc; }
+.pane-lbl { background:#d4d4d4; border-bottom:1px solid #bbb;
+  padding:2px 8px; font-size:.65rem; font-weight:700; color:#444; letter-spacing:.04em; }
+.pg { font-size:.7rem; }
+.pg-cat { background:#c8d8e8; color:#003070; font-weight:700;
+  font-size:.67rem; padding:2px 7px; border-bottom:1px solid #b0c4d8; }
+.pg-row { display:flex; border-bottom:1px solid #e8e8e8; }
+.pg-row:nth-child(even) { background:#f5f8fc; }
+.pg-k { width:110px; flex-shrink:0; padding:2px 5px 2px 9px;
+  color:#444; border-right:1px solid #ddd; font-size:.69rem; }
+.pg-k.ro { color:#888; font-style:italic; }
+.pg-v { flex:1; padding:2px 5px; color:#003070; font-weight:600; font-size:.69rem; }
+.pg-v.en { color:#555; }
+.wf-right { display:flex; flex-direction:column; }
+.log-mock { flex:1; background:#1a1a2e; padding:6px 9px;
+  font-family:Consolas,monospace; font-size:.67rem; line-height:1.6; overflow:hidden; }
+.log-mock div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lt { color:#555; margin-right:5px; }
+.lb { color:#5dade2; font-weight:600; }
+.lg { color:#4ade80; }
+.li { color:#9cdcfe; }
+.lw { color:#f0c040; }
+.wf-pane-btns { background:#e8e8e8; border-top:1px solid #ccc;
+  padding:4px 7px; display:flex; gap:5px; }
+.wf-pb { padding:2px 10px; background:#e1e1e1; border:1px solid #aaa;
+  border-radius:2px; font-size:.69rem; color:#222; cursor:default; }
+.wf-pb-p { background:#0078d7; color:#fff; border-color:#005fa3; font-weight:600; }
+.wf-status { background:#e8e8e8; border-top:1px solid #ccc;
+  padding:3px 9px; font-size:.67rem; color:#444; display:flex; }
+.status-ok { color:#16a34a; font-weight:600; }
+
+/* ── Timeline ──────────────────────────────────────────── */
+.timeline { display:flex; align-items:stretch; gap:0; margin:.6rem 0; flex-wrap:wrap; }
+.tl-item { flex:1; min-width:90px; }
+.tl-box { background:var(--card); border:1px solid var(--bd);
+  border-radius:8px; padding:.6rem .7rem; text-align:center; position:relative; }
+.tl-num { width:24px; height:24px; border-radius:50%;
+  background:linear-gradient(135deg,#2e86c1,#1a5f8a);
+  color:#fff; font-weight:800; font-size:.72rem; margin:0 auto .3rem;
+  display:flex; align-items:center; justify-content:center; }
+.tl-title { font-size:.72rem; color:#fff; font-weight:700; margin-bottom:.15rem; }
+.tl-sub   { font-size:.63rem; color:#94a8c0; }
+.tl-arrow { display:flex; align-items:center; color:var(--blue); font-size:1rem;
+  padding:0 .2rem; padding-top:.8rem; }
+
+/* ── Querverbindung ────────────────────────────────────── */
+.xref { display:inline-flex; align-items:center; gap:.4rem;
+  background:rgba(74,222,128,.08); border:1px solid rgba(74,222,128,.3);
+  color:#86efac; font-size:.75rem; padding:.3rem .8rem;
+  border-radius:6px; margin:.2rem .2rem .2rem 0; }
+.xref::before { content:'↗'; }
+
+/* ── Folie-Nummer ──────────────────────────────────────── */
+.slide-nr { position:absolute; bottom:.4rem; right:1rem;
+  font-size:.65rem; color:#444; }
+
+/* ── Transition override ───────────────────────────────── */
+.reveal .slides > section { padding: 1.5rem 2rem; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 1 — Titel
+══════════════════════════════════════════════════════ -->
+<section>
+  <div id="slide-title">
+    <div class="eyebrow">DBA Tooling · FI-TS München · 2026</div>
+    <h1>SQL Server <em>AlwaysOn</em><br>Setup Tool</h1>
+    <p class="sub">Vollautomatische Konfiguration von Availability Groups<br>auf Windows Server Failover Clustern</p>
+    <div class="pill-row">
+      <span class="pill pill-b">SQL Server 2022 / 2025</span>
+      <span class="pill pill-b">Windows Server 2022</span>
+      <span class="pill pill-g">PowerShell 5.1</span>
+      <span class="pill pill-b">WinForms GUI</span>
+      <span class="pill pill-b">v1.0.0</span>
+    </div>
+    <p style="margin-top:1.5rem;font-size:.72rem;color:#64748b;">Uwe Janke &nbsp;·&nbsp; Senior SQL Server DBA &nbsp;·&nbsp; dtcSoftware</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 2 — The Problem
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Motivation</div>
+  <h1>The Problem</h1>
+  <p>AlwaysOn-Konfiguration manuell — ein fehleranfälliger Marathon.</p>
+  <div class="cols2" style="margin-top:.8rem;">
+    <div>
+      <div class="card">
+        <div class="card-ico">⏱️</div>
+        <h3>2–4 Stunden</h3>
+        <p>Zeitaufwand für eine manuelle AG-Einrichtung — je nach Erfahrung des Bearbeiters</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">📋</div>
+        <h3>Checklisten-Pflege</h3>
+        <p>Jeder DBA hat seine eigene Word-Checklist. Kein einheitlicher Stand, keine Versionierung</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔄</div>
+        <h3>Nicht reproduzierbar</h3>
+        <p>Schritt vergessen? Falsche Portangabe? Endpoint schon vorhanden? — Fehler fallen spät auf</p>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-ico">🔐</div>
+        <h3>Kerberos / SPN-Falle</h3>
+        <p>SPNs fehlen → <code>Cannot generate SSPI context</code> → AD-Team kontaktieren → warten → weitermachen</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🧹</div>
+        <h3>Cleanup nach Fehlversuch</h3>
+        <p>WSFC-Gruppe hängt noch, Registry-Key blockiert Neuversuch — schwer zu finden ohne Erfahrung</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">📄</div>
+        <h3>Keine Dokumentation</h3>
+        <p>Was wurde konfiguriert? Welcher Failover-Modus? Welches Service-Konto? — Nachträglich kaum rekonstruierbar</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 3 — The Solution
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Überblick</div>
+  <h1>The Solution</h1>
+  <div class="cols2">
+    <div>
+      <p>Ein einziges Script — <code>AlwaysOnSetup.ps1</code> — erledigt alle 9 Konfigurationsschritte vollautomatisch nach einmaliger Parameterprüfung.</p>
+      <br>
+      <div class="card">
+        <div class="card-ico">🖥️</div>
+        <h3>WinForms GUI</h3>
+        <p>Cluster-Daten werden automatisch eingelesen. Kein Tippen nötig — nur prüfen und starten.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">📝</div>
+        <h3>Automatische Dokumentation</h3>
+        <p>Cluster-Backup, vollständiges Log und SPN-Anforderungsdatei werden automatisch gespeichert.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔁</div>
+        <h3>Idempotent &amp; robust</h3>
+        <p>Kann bei Fehler neu gestartet werden. Bereinigt WSFC-Überreste automatisch.</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.6rem;">
+      <table class="dtbl">
+        <thead><tr><th>Vorher</th><th>Nachher</th></tr></thead>
+        <tbody>
+          <tr><td>2–4 Stunden</td><td class="ok">~20 Minuten</td></tr>
+          <tr><td>Checkliste Word/Excel</td><td class="ok">GUI mit Vorbelgung</td></tr>
+          <tr><td>Kein Log</td><td class="ok">3 Dateien automatisch</td></tr>
+          <tr><td>SPN: AD-Team anrufen</td><td class="ok">setspn-Datei generiert</td></tr>
+          <tr><td>Fehlversuch → manuell putzen</td><td class="ok">Automatischer WSFC-Cleanup</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-g">
+        <strong>✓ Getestet auf</strong>
+        Windows Server 2022 · SQL Server 2022 Enterprise &amp; Standard · 2- und 3-Node-Cluster
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 4 — Prerequisites
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Vorbereitung</div>
+  <h1>Prerequisites</h1>
+  <p>Das Tool konfiguriert — es baut nicht. Was vorher stehen muss:</p>
+  <div class="cols2" style="margin-top:.7rem;">
+    <div>
+      <h3>Infrastruktur</h3>
+      <div class="steps">
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>WSFC bereits eingerichtet</strong><p>Windows Server Failover Cluster mit 2 oder 3 Nodes</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>SQL Server installiert</strong><p>Enterprise oder Standard auf allen Nodes, gleiche Version</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Port 5022 offen</strong><p>Zwischen allen Nodes für den HADR Mirroring Endpoint</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Backup-Share erreichbar</strong><p>UNC-Pfad beschreibbar von allen Nodes</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>Berechtigungen &amp; Module</h3>
+      <table class="dtbl">
+        <thead><tr><th>Anforderung</th><th>Hinweis</th></tr></thead>
+        <tbody>
+          <tr><td>Lokaler Administrator</td><td>Auf dem ausführenden Node</td></tr>
+          <tr><td>SQL <code>sysadmin</code></td><td>Auf allen Nodes</td></tr>
+          <tr><td>Domänen-Leserecht</td><td>Für SPN-Prüfung (Schritt 9)</td></tr>
+          <tr><td><code>FailoverClusters</code></td><td class="ok">Wird automatisch installiert</td></tr>
+          <tr><td><code>dbaTools ≥ 2.0</code></td><td class="ok">Wird automatisch installiert</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-w" style="margin-top:.6rem;">
+        <strong>⚡ Empfehlung</strong>
+        SPNs <em>vor</em> dem Setup setzen — spart einen manuellen Zwischen&shy;schritt. Details auf Slide 9.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 5 — The Interface
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Bedienung</div>
+  <h1>The Interface</h1>
+  <p style="margin-bottom:.6rem;">Cluster-Daten werden automatisch eingelesen. PropertyGrid links — Live-Log rechts.</p>
+
+  <div class="wf-mock">
+    <div class="wf-tbar">
+      <span>🔷 SQL Server AlwaysOn Setup Tool v1.0.0</span>
+      <div class="wf-btns">
+        <div class="wf-btn-w">–</div><div class="wf-btn-w">□</div><div class="wf-btn-w wf-x">✕</div>
+      </div>
+    </div>
+    <div style="background:#e8e8e8;border-bottom:1px solid #ccc;padding:2px 8px;display:flex;gap:4px;">
+      <span style="padding:2px 8px;background:transparent;border:1px solid transparent;border-radius:2px;font-size:.68rem;color:#222;cursor:default;">⟳ Cluster-Daten laden</span>
+      <span style="width:1px;height:18px;background:#bbb;margin:0 3px;display:inline-block;"></span>
+      <span style="padding:2px 8px;font-size:.68rem;color:#222;cursor:default;">✔ AD-Konto validieren</span>
+    </div>
+    <div class="wf-content">
+      <div class="wf-left">
+        <div class="pane-lbl">① KONFIGURATION (PropertyGrid)</div>
+        <div class="pg">
+          <div class="pg-cat">1 – Cluster</div>
+          <div class="pg-row"><div class="pg-k ro">Cluster-Name</div><div class="pg-v en">SQLCLUSTER01</div></div>
+          <div class="pg-row"><div class="pg-k ro">Listener-IP</div><div class="pg-v en">10.0.1.50</div></div>
+          <div class="pg-row"><div class="pg-k ro">Listener-Port</div><div class="pg-v en">1433</div></div>
+          <div class="pg-cat">2 – Nodes</div>
+          <div class="pg-row"><div class="pg-k">Node 1</div><div class="pg-v">SQLNODE01\MSSQLSERVER</div></div>
+          <div class="pg-row"><div class="pg-k">Node 2</div><div class="pg-v">SQLNODE02\MSSQLSERVER</div></div>
+          <div class="pg-cat">3 – Availability Group</div>
+          <div class="pg-row"><div class="pg-k">AG-Name</div><div class="pg-v">AG_PROD_01</div></div>
+          <div class="pg-row"><div class="pg-k">Endpoint-Port</div><div class="pg-v">5022</div></div>
+          <div class="pg-row"><div class="pg-k">Failover-Modus</div><div class="pg-v en">Automatic ▾</div></div>
+          <div class="pg-row"><div class="pg-k">Test-Datenbank</div><div class="pg-v">AG_TestDB</div></div>
+          <div class="pg-cat">4 – Service-Konto</div>
+          <div class="pg-row"><div class="pg-k">Dienst-Konto</div><div class="pg-v">HLB\svc-sql-prod</div></div>
+          <div class="pg-row"><div class="pg-k">Kennwort</div><div class="pg-v" style="letter-spacing:3px;color:#555;">••••••••</div></div>
+        </div>
+        <div class="wf-pane-btns">
+          <div class="wf-pb wf-pb-p">② Konfiguration starten</div>
+          <div class="wf-pb">Schließen</div>
+        </div>
+      </div>
+      <div class="wf-right">
+        <div class="pane-lbl">④ PROTOKOLL (Live-Log)</div>
+        <div class="log-mock">
+          <div><span class="lt">[10:14:22]</span><span class="lb">=== Cluster- und SQL-Informationen einlesen ===</span></div>
+          <div><span class="lt">[10:14:23]</span><span class="li">Nodes: SQLNODE01, SQLNODE02 · Listener: 10.0.1.50:1433</span></div>
+          <div><span class="lt">[10:14:24]</span><span class="lg">Eingelesen: SQLCLUSTER01 – OK</span></div>
+          <div><span class="lt">[10:15:01]</span><span class="lb">=== Schritt 2: HADR aktivieren ===</span></div>
+          <div><span class="lt">[10:15:03]</span><span class="lg">SQLNODE01: HADR aktiviert – Dienst neu gestartet</span></div>
+          <div><span class="lt">[10:15:14]</span><span class="lg">SQLNODE01: SQL Server wieder erreichbar</span></div>
+          <div><span class="lt">[10:15:22]</span><span class="lb">=== Schritt 3: Endpoint erstellen ===</span></div>
+          <div><span class="lt">[10:15:23]</span><span class="lg">SQLNODE01: Endpoint 'Hadr_endpoint' (5022) angelegt</span></div>
+          <div><span class="lt">[10:15:31]</span><span class="lg">AG_PROD_01 erfolgreich angelegt ✓</span></div>
+          <div><span class="lt">[10:15:32]</span><span class="lw">⚠ SPN MSSQLSvc/SQLNODE02:1433 fehlt</span></div>
+        </div>
+        <div class="wf-pane-btns">
+          <div class="wf-pb">⑤ Log löschen</div>
+          <div class="wf-pb">💾 Log speichern (RTF)</div>
+        </div>
+      </div>
+    </div>
+    <div class="wf-status">
+      <span class="status-ok">⑥ AG_PROD_01 erfolgreich konfiguriert</span>
+      <span style="margin-left:auto;color:#666;">SPN-Datei: C:\System\WinSrvLog\MSSQL\AlwaysOn_SPN_ADTeam_20260513.txt</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 6 — 9-Step Workflow
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Ablauf</div>
+  <h1>9-Step Workflow</h1>
+  <p style="margin-bottom:.7rem;">Alle Schritte laufen sequenziell und protokolliert. Übersprungene Schritte werden im Log ausgewiesen.</p>
+  <div class="timeline">
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">1</div><div class="tl-title">Service-Konto</div><div class="tl-sub">Optional · WMI</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">2</div><div class="tl-title">HADR aktivieren</div><div class="tl-sub">sp_configure</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">3</div><div class="tl-title">Endpoint</div><div class="tl-sub">Port 5022</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">4</div><div class="tl-title">CONNECT</div><div class="tl-sub">GRANT</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">5</div><div class="tl-title">Test-DB</div><div class="tl-sub">FULL + Backup</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">6</div><div class="tl-title">AG anlegen</div><div class="tl-sub">T-SQL / sqlcmd</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">7</div><div class="tl-title">Listener</div><div class="tl-sub">ALTER AG</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">8</div><div class="tl-title">Status</div><div class="tl-sub">DMV-Check</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">9</div><div class="tl-title">SPN-Prüfung</div><div class="tl-sub">AD-Team Datei</div></div></div>
+  </div>
+  <div class="cols2" style="margin-top:.8rem;">
+    <div class="alert alert-b">
+      <strong>ℹ Schritt 1 optional</strong>
+      Wenn kein Service-Konto-Wechsel nötig ist, wird Schritt 1 übersprungen. Das Tool erkennt den aktuellen Kontostand automatisch.
+    </div>
+    <div class="alert alert-w">
+      <strong>⚠ Pause möglich bei Schritt 4</strong>
+      Wenn Kerberos-Auth fehlschlägt (fehlende SPNs), pausiert das Tool und fordert zur manuellen SQL-Login-Anlage auf.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 7 — Deep Dive: HADR
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Schritt 2</div>
+  <h1>HADR Activation</h1>
+  <div class="cols2">
+    <div>
+      <p>AlwaysOn ist in SQL Server standardmäßig deaktiviert und muss auf jedem Node einzeln eingeschaltet werden.</p>
+      <div class="steps" style="margin-top:.6rem;">
+        <div class="step"><div class="step-n">1</div><div class="step-body"><strong>sp_configure setzen</strong><p>Auf allen Nodes: <code>hadr enabled = 1</code> via <code>Invoke-DbaQuery</code></p></div></div>
+        <div class="step"><div class="step-n">2</div><div class="step-body"><strong>Dienst-Neustart via WMI</strong><p><code>Win32_Service.StopService() / StartService()</code> — kein Restart-Computer nötig</p></div></div>
+        <div class="step"><div class="step-n">3</div><div class="step-body"><strong>Bereitschaftstest</strong><p><code>SELECT 1</code> alle 2 Sek., max. 120 Sek. — erst dann weiter zu Schritt 3</p></div></div>
+      </div>
+      <div class="alert alert-b" style="margin-top:.6rem;">
+        <strong>ℹ Warum WMI statt Restart-Service?</strong>
+        <code>Restart-Service MSSQLSERVER</code> prüft nicht ob der Dienst wirklich wieder bereit ist.
+        WMI + aktiver Verbindungstest stellt sicher, dass SQL Server vollständig initialisiert ist, bevor Schritt 3 beginnt.
+      </div>
+    </div>
+    <div>
+      <pre><span class="cc"># Auf jedem Node:</span>
+<span class="ck">Invoke-DbaQuery</span> -SqlInstance $node `
+  -Query <span class="cs">"EXEC sp_configure 'hadr enabled',1;
+           RECONFIGURE"</span>
+
+<span class="cc"># WMI Dienst-Neustart</span>
+<span class="ck">$svc</span> = Get-WmiObject Win32_Service `
+  -ComputerName $node `
+  -Filter <span class="cs">"Name='MSSQLSERVER'"</span>
+<span class="ck">$svc</span>.StopService()  <span class="cc"># warten bis Stopped</span>
+<span class="ck">$svc</span>.StartService() <span class="cc"># warten bis Running</span>
+
+<span class="cc"># Bereitschaftstest (max. 120s)</span>
+<span class="ck">$ok</span> = <span class="cs">$false</span>
+<span class="ck">for</span> ($i=0; $i -lt 60; $i++) {
+  <span class="ck">try</span> {
+    Invoke-DbaQuery -Query <span class="cs">"SELECT 1"</span>
+    <span class="ck">$ok</span> = <span class="cs">$true</span>; <span class="ck">break</span>
+  } <span class="ck">catch</span> { Start-Sleep 2 }
+}
+<span class="ck">if</span> (-not $ok) { <span class="cw">throw "Timeout"</span> }</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 8 — Deep Dive: AG per sqlcmd
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Schritt 6</div>
+  <h1>AG Creation — Why sqlcmd?</h1>
+  <div class="cols2">
+    <div>
+      <p>Für <code>CREATE AVAILABILITY GROUP</code> wird bewusst <code>sqlcmd</code> direkt verwendet — nicht <code>Invoke-DbaQuery</code>.</p>
+      <div class="alert alert-w" style="margin-top:.5rem;">
+        <strong>⚠ Das dbaTools-Verbindungs-Cache-Problem</strong>
+        Nach dem Dienst-Neustart in Schritt 2 hält dbaTools intern gecachte Verbindungsobjekte.
+        Über diese erscheint <code>sys.availability_groups</code> noch leer — obwohl die AG bereits existiert.
+        <code>sqlcmd</code> öffnet bei jedem Aufruf eine frische TCP-Verbindung und sieht den aktuellen Zustand.
+      </div>
+      <div class="alert alert-b" style="margin-top:.5rem;">
+        <strong>ℹ dbaTools — bewusst minimaler Einsatz</strong>
+        Nur <code>Invoke-DbaQuery</code> und <code>Connect-DbaInstance</code> werden genutzt.
+        Alle anderen Operationen: direktes T-SQL, WMI oder FailoverClusters-Cmdlets.
+      </div>
+    </div>
+    <div>
+      <pre><span class="cc"># CREATE AVAILABILITY GROUP via sqlcmd</span>
+<span class="cc"># -- frische Verbindung, kein dbaTools-Cache</span>
+<span class="ck">$sql</span> = <span class="cs">@"
+CREATE AVAILABILITY GROUP [$AgName]
+WITH (AUTOMATED_BACKUP_PREFERENCE = PRIMARY)
+FOR DATABASE [$TestDb]
+REPLICA ON
+  N'$node1' WITH (
+    ENDPOINT_URL = 'TCP://$node1:5022',
+    FAILOVER_MODE = AUTOMATIC,
+    AVAILABILITY_MODE = SYNCHRONOUS_COMMIT),
+  N'$node2' WITH (
+    ENDPOINT_URL = 'TCP://$node2:5022',
+    FAILOVER_MODE = AUTOMATIC,
+    AVAILABILITY_MODE = SYNCHRONOUS_COMMIT);
+"@</span>
+
+<span class="cc"># sqlcmd direkt aufrufen</span>
+<span class="ck">sqlcmd</span> -S $node1 -E -Q $sql</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 9 — Deep Dive: Kerberos / SPN
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Schritt 4 + 9</div>
+  <h1>Kerberos &amp; SPN Handling</h1>
+  <div class="cols2">
+    <div>
+      <p>SPNs ermöglichen Kerberos-Auth. Fehlen sie, schlägt Windows-Auth mit <code>Cannot generate SSPI context</code> fehl.</p>
+      <table class="dtbl" style="margin-top:.5rem;">
+        <thead><tr><th>Situation</th><th>Ablauf</th></tr></thead>
+        <tbody>
+          <tr><td class="ok">SPNs gesetzt ✓</td><td>Vollautomatisch — kein Eingriff</td></tr>
+          <tr><td class="err">SPNs fehlen ✗</td><td>Pause → T-SQL anzeigen → manuell → Weiter</td></tr>
+        </tbody>
+      </table>
+      <br>
+      <p><strong style="color:#fff;">Fallback-Mechanismus:</strong></p>
+      <div class="steps">
+        <div class="step"><div class="step-n">1</div><div class="step-body"><strong>Tool erkennt SSPI-Fehler</strong><p>Kerberos-Test schlägt fehl auf betroffenem Node</p></div></div>
+        <div class="step"><div class="step-n">2</div><div class="step-body"><strong>T-SQL-Block im Log</strong><p>Temporäres Login — fertig zum Kopieren in SSMS</p></div></div>
+        <div class="step"><div class="step-n">3</div><div class="step-body"><strong>Manuell ausführen + Weiter</strong><p>Tool prüft SQL-Auth, setzt mit allen Schritten fort</p></div></div>
+        <div class="step"><div class="step-n">4</div><div class="step-body"><strong>Automatisches Cleanup</strong><p>Temporäres Login am Ende garantiert gelöscht</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>Benötigte SPNs</h3>
+      <pre><span class="cc"># Je Node – Kurzname und FQDN</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE01:1433</span> <span class="cw">DOM\svc-sql</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE01.dom.com:1433</span> <span class="cw">DOM\svc-sql</span>
+
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE02:1433</span> <span class="cw">DOM\svc-sql</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/SQLNODE02.dom.com:1433</span> <span class="cw">DOM\svc-sql</span>
+
+<span class="cc"># AG-Listener</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/AG-LISTENER:1433</span> <span class="cw">DOM\svc-sql</span>
+<span class="ck">setspn</span> -S <span class="cs">MSSQLSvc/AG-LISTENER.dom.com:1433</span> <span class="cw">DOM\svc-sql</span>
+
+<span class="cc"># Prüfung:</span>
+<span class="ck">setspn</span> -L <span class="cw">DOM\svc-sql</span></pre>
+      <div class="alert alert-g">
+        <strong>✓ Schritt 9 generiert diese Befehle automatisch</strong>
+        Datei: <code>AlwaysOn_SPN_ADTeam_&lt;Datum&gt;.txt</code><br>
+        Einfach an das AD-Team weitergeben.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 10 — Output Files
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Ausgaben</div>
+  <h1>Output &amp; Logging</h1>
+  <p>Alle Dateien landen automatisch unter <code>C:\System\WinSrvLog\MSSQL\</code> — keine manuelle Aktion nötig.</p>
+  <div class="cols2" style="margin-top:.7rem;">
+    <div>
+      <table class="dtbl">
+        <thead><tr><th>Datei</th><th>Inhalt</th><th>Zeitpunkt</th></tr></thead>
+        <tbody>
+          <tr><td><code>AlwaysOn_ClusterSettings_&lt;Datum&gt;.txt</code></td><td>Cluster-Backup vor Änderungen</td><td>Schritt 1</td></tr>
+          <tr><td><code>AlwaysOn_Setup_&lt;Datum&gt;.log</code></td><td>Vollständiges Text-Log</td><td>Abschluss</td></tr>
+          <tr><td><code>AlwaysOn_Setup_&lt;Datum&gt;.rtf</code></td><td>Farbiges Log (manuell)</td><td>Manuell</td></tr>
+          <tr><td><code>AlwaysOn_SPN_ADTeam_&lt;Datum&gt;.txt</code></td><td>setspn-Befehle für AD-Team</td><td>Schritt 9</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Log-Farbcodierung</h3>
+      <div style="background:#1a1a2e;border-radius:8px;padding:.8rem 1rem;font-family:Consolas,monospace;font-size:.75rem;line-height:1.8;">
+        <div><span style="color:#5dade2;font-weight:600;">=== Schritt 6: Availability Group anlegen ===</span></div>
+        <div><span style="color:#9cdcfe;">[10:15:25] CREATE AVAILABILITY GROUP [AG_PROD_01] ...</span></div>
+        <div><span style="color:#4ade80;font-weight:600;">[10:15:31] AG_PROD_01 erfolgreich angelegt ✓</span></div>
+        <div><span style="color:#f0c040;">[10:15:32] ⚠ SPN MSSQLSvc/SQLNODE02:1433 fehlt</span></div>
+        <div><span style="color:#f87171;font-weight:600;">[10:15:45] ✗ Endpoint-Port 5022 bereits belegt</span></div>
+      </div>
+      <table class="dtbl" style="margin-top:.5rem;">
+        <tbody>
+          <tr><td><span style="color:#5dade2;">■</span> Blau</td><td>Abschnittsüberschrift</td></tr>
+          <tr><td><span style="color:#4ade80;">■</span> Grün</td><td>Erfolg</td></tr>
+          <tr><td><span style="color:#f0c040;">■</span> Gelb</td><td>Warnung / Hinweis</td></tr>
+          <tr><td><span style="color:#f87171;">■</span> Rot</td><td>Fehler</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 11 — WSFC Cleanup
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Robustheit</div>
+  <h1>WSFC Cleanup &amp; Retry</h1>
+  <div class="cols2">
+    <div>
+      <p>Fehlgeschlagene Setup-Versuche hinterlassen WSFC-Überreste, die einen Neuversuch blockieren.</p>
+      <br>
+      <div class="steps">
+        <div class="step"><div class="step-n">1</div><div class="step-body"><strong>Prüfung vor AG-Anlage</strong><p>Tool prüft ob WSFC-Gruppe für den AG-Namen bereits existiert</p></div></div>
+        <div class="step"><div class="step-n">2</div><div class="step-body"><strong>Stop + Remove-ClusterGroup</strong><p><code>-RemoveResources -Force</code> — vollständige Bereinigung</p></div></div>
+        <div class="step"><div class="step-n">3</div><div class="step-body"><strong>Registry-Bereinigung</strong><p><code>HadrAgNameToldMap</code> auf allen Nodes via <code>Invoke-Command</code></p></div></div>
+        <div class="step"><div class="step-n">4</div><div class="step-body"><strong>Neuversuch sauber möglich</strong><p>Kein manueller Eingriff nötig</p></div></div>
+      </div>
+    </div>
+    <div>
+      <pre><span class="cc"># WSFC-Überreste prüfen und bereinigen</span>
+<span class="ck">$existingGroup</span> = Get-ClusterGroup `
+  -Name $AgName -ErrorAction SilentlyContinue
+
+<span class="ck">if</span> ($existingGroup) {
+  Write-Log <span class="cs">"Verwaiste WSFC-Gruppe gefunden – bereinige..."</span>
+  Stop-ClusterGroup -Name $AgName -Force
+  Remove-ClusterGroup -Name $AgName `
+    -RemoveResources -Force
+}
+
+<span class="cc"># Registry auf allen Nodes bereinigen</span>
+<span class="ck">$regKey</span> = <span class="cs">"HKLM:\Cluster\HadrAgNameToldMap"</span>
+<span class="ck">Invoke-Command</span> -ComputerName $allNodes {
+  <span class="ck">if</span> (Test-Path $using:regKey) {
+    Remove-ItemProperty -Path $using:regKey `
+      -Name $using:AgName -ErrorAction SilentlyContinue
+  }
+}</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 12 — Cross-Reference sqmSQLTool
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Toolchain</div>
+  <h1>Connection to sqmSQLTool</h1>
+  <p>Das AlwaysOn Setup Tool richtet die AG ein. <strong style="color:#fff;">sqmSQLTool</strong> übernimmt danach den laufenden Betrieb.</p>
+
+  <div class="cols2" style="margin-top:.8rem;">
+    <div>
+      <h3 style="color:#fff;margin-bottom:.5rem;">Nach dem Setup — sqmSQLTool-Aufgaben</h3>
+      <div class="card">
+        <div class="card-ico">🏥</div>
+        <h3>Monitoring einrichten</h3>
+        <p><code>Invoke-sqmSplunkConfiguration</code> — AG-Replikationsstatus, Sync-Health, Failover-Events an Splunk</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔐</div>
+        <h3>SA-Obfuscation</h3>
+        <p><code>Invoke-sqmSaObfuscation</code> — SA-Account auf allen Nodes umbenennen, Standardangriffsfläche reduzieren</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">📜</div>
+        <h3>Zertifikat anlegen</h3>
+        <p><code>New-sqmSqlCertificate</code> — Endpoint-Verschlüsselung mit eigenem SQL-Zertifikat absichern</p>
+      </div>
+    </div>
+    <div>
+      <h3 style="color:#fff;margin-bottom:.5rem;">Laufender Betrieb</h3>
+      <div class="card">
+        <div class="card-ico">🔎</div>
+        <h3>AlwaysOn-Health-Check</h3>
+        <p><code>Get-sqmServerSetting</code> — regelmäßige Prüfung aller AG-Replicas auf Synchronisierungsstatus</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">💾</div>
+        <h3>Backup-Management</h3>
+        <p><code>Invoke-sqmUserDatabaseBackup</code> — erkennt Read-Only Secondaries automatisch und überspringt sie</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🐛</div>
+        <h3>Deadlock-Analyse</h3>
+        <p><code>Get-sqmDeadlockReport</code> — AG-aware, liest nur vom Primary, stündliche Erfassung</p>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:.8rem;display:flex;flex-wrap:wrap;gap:.3rem;">
+    <span class="xref">sqmSQLTool — nächste Session</span>
+    <span class="xref">SQLSetupTool — AG nach Neuinstallation</span>
+    <span class="xref">DeadlockCollector — laufender Betrieb</span>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 13 — Scope & Boundaries
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Abgrenzung</div>
+  <h1>Scope &amp; Boundaries</h1>
+  <p>Was das Tool bewusst <strong style="color:#f87171;">nicht</strong> macht — und warum.</p>
+  <div class="cols2" style="margin-top:.7rem;">
+    <div>
+      <h3>Außerhalb des Scope</h3>
+      <table class="dtbl">
+        <thead><tr><th>Aufgabe</th><th>Zuständigkeit</th></tr></thead>
+        <tbody>
+          <tr><td>WSFC anlegen</td><td>Server-Team / Failover-Cluster-Setup</td></tr>
+          <tr><td>DNS-Einträge für Listener</td><td>Netzwerk-Team</td></tr>
+          <tr><td>Firewall Port 5022</td><td>Netzwerk-Team</td></tr>
+          <tr><td>SPNs setzen</td><td>AD-Team (Tool liefert die Befehle)</td></tr>
+          <tr><td>SQL Server installieren</td><td>SQLSetupTool</td></tr>
+          <tr><td>Produktivdatenbanken in AG aufnehmen</td><td>Manuell / Migration Tool</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Designentscheidungen</h3>
+      <div class="alert alert-b">
+        <strong>ℹ Nur eine Test-Datenbank</strong>
+        Das Tool nimmt eine Test-DB in die AG auf — um die Funktionsfähigkeit zu beweisen.
+        Produktivdatenbanken werden danach manuell oder per SQLMigration-Tool hinzugefügt.
+      </div>
+      <div class="alert alert-b" style="margin-top:.5rem;">
+        <strong>ℹ Kein GUI-Autostart</strong>
+        Das Script wird per PowerShell gestartet (<code>.\AlwaysOnSetup.ps1</code>). Kein Installer, keine Registry-Einträge — bewusst einfach zu deployen.
+      </div>
+      <div class="alert alert-g" style="margin-top:.5rem;">
+        <strong>✓ Alle Änderungen reversibel</strong>
+        Cluster-Backup vor Schritt 1. HADR kann wieder deaktiviert werden. Temporäres Login wird immer entfernt.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 14 — Troubleshooting
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Fehlerbehandlung</div>
+  <h1>Troubleshooting</h1>
+  <table class="dtbl">
+    <thead><tr><th>Fehlermeldung</th><th>Ursache</th><th>Lösung</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>Cannot generate SSPI context</code></td>
+        <td>SPNs fehlen im AD</td>
+        <td>Manuellen SQL-Login-Schritt im Tool durchführen. Langfristig: AD-Team SPNs setzen lassen</td>
+      </tr>
+      <tr>
+        <td><code>WSFC group … already exists</code></td>
+        <td>Überrest eines Fehlversuchs</td>
+        <td class="ok">Tool bereinigt automatisch: Remove-ClusterGroup + Registry</td>
+      </tr>
+      <tr>
+        <td><code>Login failed for user AGSetup_…</code></td>
+        <td>Mixed Mode deaktiviert oder Password-Policy</td>
+        <td>Server Properties → Security → SQL Server and Windows Authentication mode</td>
+      </tr>
+      <tr>
+        <td><code>Backup-Verzeichnis nicht erreichbar</code></td>
+        <td>UNC-Pfad ungültig / keine Schreibrechte</td>
+        <td>Pfad im PropertyGrid korrigieren — muss von allen Nodes beschreibbar sein</td>
+      </tr>
+      <tr>
+        <td><code>Endpoint-Port 5022 belegt</code></td>
+        <td>Bestehender Endpoint oder anderer Dienst</td>
+        <td><code>SELECT * FROM sys.endpoints WHERE type=4</code> — Port im PropertyGrid anpassen</td>
+      </tr>
+      <tr>
+        <td><code>AG nach 60s nicht sichtbar</code></td>
+        <td>SQL Server nicht vollständig bereit</td>
+        <td class="ok">Tool wartet aktiv bis 120s. Danach Dienst manuell prüfen</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 15 — Summary
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Zusammenfassung</div>
+  <h1>Summary &amp; Next Steps</h1>
+  <div class="cols2">
+    <div>
+      <h3>Key Takeaways</h3>
+      <div class="steps">
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>2–4h → ~20 Minuten</strong><p>Vollautomatischer Durchlauf nach einmaliger Parameterprüfung</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Kerberos-Fallback eingebaut</strong><p>Fehlende SPNs stoppen das Setup nicht — kontrollierter Workaround</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Automatische Dokumentation</strong><p>Cluster-Backup, Log, SPN-Datei — ohne Zusatzaufwand</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Idempotent</strong><p>WSFC-Cleanup erlaubt sauberen Neuversuch nach Fehler</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Teil der Toolchain</strong><p>Zusammen mit sqmSQLTool und SQLSetupTool vollständiger DBA-Workflow</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>Links &amp; Ressourcen</h3>
+      <table class="dtbl">
+        <tbody>
+          <tr><td>GitHub</td><td><code>github.com/JankeUwe/AlwaysOnSetup</code></td></tr>
+          <tr><td>Doku</td><td><code>AlwaysOn_Doku.html</code></td></tr>
+          <tr><td>Handbuch</td><td><code>AlwaysOn_Handbuch.docx</code></td></tr>
+          <tr><td>Website</td><td><code>www.powershelldba.de</code></td></tr>
+        </tbody>
+      </table>
+      <br>
+      <h3>Nächste Präsentationen</h3>
+      <div style="display:flex;flex-direction:column;gap:.4rem;margin-top:.3rem;">
+        <span class="xref">SQLSetupTool — Standardisierte SQL-Installation</span>
+        <span class="xref">sqmSQLTool — DBA-Toolbox (Monitoring, Backup, Analyse)</span>
+        <span class="xref">DeadlockCollector — Automatische Deadlock-Erfassung</span>
+        <span class="xref">ReportDeploymentTool — SSRS Massendeployment</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: 'c/t',
+  controls: true,
+  progress: true,
+  center: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  backgroundTransition: 'fade',
+  width: 1280,
+  height: 720,
+  margin: 0.04,
+  plugins: []
+});
+</script>
+</body>
+</html>
