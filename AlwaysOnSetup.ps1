@@ -650,14 +650,60 @@ function Initialize-SetupCredential {
         return $null   # kein SQL-Login nötig
     }
 
-    # Mindestens ein Node nicht per Windows-Auth erreichbar → SQL-Login erforderlich
-    # Das Script pausiert hier und wartet auf Anwender-Bestätigung.
-    # Der Anwender legt das Login manuell an und klickt dann "Weiter".
+    # Mindestens ein Node nicht per Windows-Auth erreichbar → SQL-Login erforderlich.
+    # Voraussetzung: SQL Server muss im Mixed-Mode laufen.
+    # Prüfung und automatische Aktivierung per xp_instance_regwrite (lokal via PSRemoting).
     Write-RtfSection -Rtb $Rtb -Msg 'Manuelle Aktion erforderlich: SQL-Login anlegen'
     Write-RtfWarn -Rtb $Rtb -Msg "  Folgende Nodes sind per Windows-Auth (Kerberos) nicht erreichbar:"
     foreach ($n in $failedNodes) {
         Write-RtfWarn -Rtb $Rtb -Msg "    – $n"
     }
+
+    # Mixed-Mode prüfen und bei Bedarf aktivieren
+    Write-RtfInfo -Rtb $Rtb -Msg ""
+    Write-RtfSection -Rtb $Rtb -Msg 'Mixed-Mode Authentifizierung prüfen'
+    foreach ($nc in ($AllNodes | Where-Object { $failedNodes -contains $_.SqlInstance })) {
+        $node = $nc.Hostname
+        try {
+            $loginMode = Invoke-Command -ComputerName $node -ScriptBlock {
+                $regPath = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL*.MSSQLSERVER\MSSQLServer'
+                $key = (Get-Item -Path $regPath -ErrorAction Stop)
+                $key.GetValue('LoginMode', 1)
+            } -ErrorAction Stop
+
+            if ($loginMode -ne 2) {
+                Write-RtfWarn -Rtb $Rtb -Msg "  $node`: Mixed-Mode nicht aktiv (LoginMode=$loginMode) – wird aktiviert ..."
+                Invoke-Command -ComputerName $node -ScriptBlock {
+                    $regPath = (Get-Item 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL*.MSSQLSERVER\MSSQLServer').PSPath
+                    Set-ItemProperty -Path $regPath -Name 'LoginMode' -Value 2 -Type DWord
+                } -ErrorAction Stop
+                # SQL Server Dienst neu starten damit Mixed-Mode wirksam wird
+                Write-RtfInfo -Rtb $Rtb -Msg "  $node`: Dienst-Neustart (Mixed-Mode Aktivierung) ..."
+                $svc = Get-WmiObject Win32_Service -ComputerName $node -Filter "Name='MSSQLSERVER'" -ErrorAction Stop
+                $svc.StopService() | Out-Null
+                $deadline = (Get-Date).AddSeconds(60)
+                while ((Get-WmiObject Win32_Service -ComputerName $node -Filter "Name='MSSQLSERVER'").State -ne 'Stopped') {
+                    if ((Get-Date) -gt $deadline) { throw "Timeout: Dienst stoppt nicht" }
+                    Start-Sleep -Seconds 2
+                }
+                $svc.StartService() | Out-Null
+                $deadline = (Get-Date).AddSeconds(120)
+                $ready = $false
+                while (-not $ready) {
+                    if ((Get-Date) -gt $deadline) { throw "Timeout: Dienst startet nicht" }
+                    try { Invoke-DbaQuery -SqlInstance $nc.SqlInstance -Query 'SELECT 1' -ErrorAction Stop | Out-Null; $ready = $true }
+                    catch { Start-Sleep -Seconds 2 }
+                }
+                Write-RtfSuccess -Rtb $Rtb -Msg "  $node`: Mixed-Mode aktiviert, SQL Server bereit."
+            } else {
+                Write-RtfInfo -Rtb $Rtb -Msg "  $node`: Mixed-Mode bereits aktiv (LoginMode=2) – OK."
+            }
+        } catch {
+            Write-RtfWarn -Rtb $Rtb -Msg "  $node`: Mixed-Mode-Prüfung fehlgeschlagen – $_"
+            Write-RtfWarn -Rtb $Rtb -Msg "  $node`: Bitte Mixed-Mode manuell aktivieren: Server Properties → Security → SQL Server and Windows Authentication mode"
+        }
+    }
+
     Write-RtfInfo -Rtb $Rtb -Msg ""
     Write-RtfInfo -Rtb $Rtb -Msg "  Bitte auf ALLEN Nodes folgendes T-SQL als sysadmin ausführen:"
     Write-RtfInfo -Rtb $Rtb -Msg "  (z.B. per SSMS lokal auf dem jeweiligen Node oder per RDP)"
