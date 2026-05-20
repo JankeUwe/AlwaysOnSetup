@@ -1044,8 +1044,15 @@ function Invoke-AlwaysOnSteps {
 
             if (-not $epCheck) {
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Endpoint wird erstellt ..."
+                # AUTHORIZATION setzt explizit den Endpoint-Eigentümer.
+                # Ohne Klausel wäre es der aktuell ausführende Login –
+                # beim SQL-Auth-Fallback der temporäre AGSetup_*-Login,
+                # der am Ende gelöscht wird (verwaister Eigentümer).
+                # Wir verwenden das Service-Konto wenn bekannt, sonst sa.
+                $epOwner = if ($Config.ServiceAccount) { $Config.ServiceAccount } else { 'sa' }
                 Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop -Query @"
 CREATE ENDPOINT [HADR_Endpoint]
+    AUTHORIZATION [$epOwner]
     STATE = STARTED
     AS TCP (LISTENER_PORT = $($Config.EndpointPort))
     FOR DATABASE_MIRRORING (ROLE = ALL, ENCRYPTION = REQUIRED ALGORITHM AES);

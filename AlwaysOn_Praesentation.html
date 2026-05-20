@@ -122,49 +122,101 @@
 .section-slide h2 { font-size:2rem; margin-bottom:.5rem; }
 .section-slide p  { color:#94a8c0; font-size:.95rem; }
 
-/* ── GUI Mockup ────────────────────────────────────────── */
-.wf-mock { background:#f0f0f0; border-radius:6px; overflow:hidden;
-  font-family:'Segoe UI',sans-serif; font-size:.73rem;
-  box-shadow:0 6px 28px rgba(0,0,0,.6); }
-.wf-tbar { background:#0078d7; color:#fff; padding:4px 10px;
-  display:flex; align-items:center; gap:7px; }
-.wf-tbar span { flex:1; font-size:.72rem; font-weight:600; }
-.wf-btns { display:flex; gap:3px; }
-.wf-btn-w { width:20px; height:16px; background:rgba(255,255,255,.15);
-  border:1px solid rgba(255,255,255,.3); border-radius:2px;
-  display:flex; align-items:center; justify-content:center; font-size:.65rem; }
-.wf-x { background:#e74c3c; border-color:#c0392b; }
-.wf-content { display:grid; grid-template-columns:230px 1fr; min-height:200px; }
-.wf-left { border-right:1px solid #ccc; }
-.pane-lbl { background:#d4d4d4; border-bottom:1px solid #bbb;
-  padding:2px 8px; font-size:.65rem; font-weight:700; color:#444; letter-spacing:.04em; }
-.pg { font-size:.7rem; }
-.pg-cat { background:#c8d8e8; color:#003070; font-weight:700;
-  font-size:.67rem; padding:2px 7px; border-bottom:1px solid #b0c4d8; }
-.pg-row { display:flex; border-bottom:1px solid #e8e8e8; }
-.pg-row:nth-child(even) { background:#f5f8fc; }
-.pg-k { width:110px; flex-shrink:0; padding:2px 5px 2px 9px;
-  color:#444; border-right:1px solid #ddd; font-size:.69rem; }
-.pg-k.ro { color:#888; font-style:italic; }
-.pg-v { flex:1; padding:2px 5px; color:#003070; font-weight:600; font-size:.69rem; }
-.pg-v.en { color:#555; }
-.wf-right { display:flex; flex-direction:column; }
-.log-mock { flex:1; background:#1a1a2e; padding:6px 9px;
-  font-family:Consolas,monospace; font-size:.67rem; line-height:1.6; overflow:hidden; }
-.log-mock div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.lt { color:#555; margin-right:5px; }
-.lb { color:#5dade2; font-weight:600; }
-.lg { color:#4ade80; }
-.li { color:#9cdcfe; }
-.lw { color:#f0c040; }
-.wf-pane-btns { background:#e8e8e8; border-top:1px solid #ccc;
-  padding:4px 7px; display:flex; gap:5px; }
-.wf-pb { padding:2px 10px; background:#e1e1e1; border:1px solid #aaa;
-  border-radius:2px; font-size:.69rem; color:#222; cursor:default; }
-.wf-pb-p { background:#0078d7; color:#fff; border-color:#005fa3; font-weight:600; }
-.wf-status { background:#e8e8e8; border-top:1px solid #ccc;
-  padding:3px 9px; font-size:.67rem; color:#444; display:flex; }
-.status-ok { color:#16a34a; font-weight:600; }
+/* ── GUI Mockup (WinForms — identisch zur Website) ─────── */
+.psdb-ao *, .psdb-ao *::before, .psdb-ao *::after { box-sizing:border-box; }
+.psdb-ao .gui-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.psdb-ao .wf {
+  min-width:680px; max-width:1100px; margin:.5rem auto 0;
+  background:#f0f0f0; border:1px solid #aaa; border-radius:6px;
+  overflow:hidden; font-family:'Segoe UI',sans-serif; font-size:.8rem;
+  box-shadow:0 6px 28px rgba(0,0,0,.6);
+}
+.psdb-ao .wf-title {
+  background:#0078d7; color:#fff; padding:5px 10px;
+  display:flex; align-items:center; gap:8px; user-select:none;
+}
+.psdb-ao .wf-title span { flex:1; font-size:.79rem; font-weight:600; }
+.psdb-ao .wf-title-btns { display:flex; gap:3px; }
+.psdb-ao .wf-tbtn {
+  width:22px; height:18px; border-radius:2px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.7rem; cursor:default; border:1px solid rgba(255,255,255,.3);
+}
+.psdb-ao .wf-tbtn.min, .psdb-ao .wf-tbtn.max { background:rgba(255,255,255,.15); color:#fff; }
+.psdb-ao .wf-tbtn.cls { background:#e74c3c; color:#fff; border-color:#c0392b; }
+.psdb-ao .wf-toolbar {
+  background:#e8e8e8; border-bottom:1px solid #ccc;
+  padding:3px 8px; display:flex; align-items:center; gap:4px;
+}
+.psdb-ao .ts-btn {
+  padding:3px 10px; background:transparent; border:1px solid transparent;
+  border-radius:2px; font-size:.78rem; cursor:default; color:#222;
+  display:flex; align-items:center; gap:4px;
+}
+.psdb-ao .ts-sep { width:1px; height:20px; background:#bbb; margin:0 4px; }
+.psdb-ao .ts-icon { font-size:.84rem; }
+.psdb-ao .wf-tabs { background:#e0e0e0; border-bottom:1px solid #bbb; padding:0 8px; display:flex; }
+.psdb-ao .wf-tab {
+  padding:5px 16px; font-size:.79rem; cursor:default;
+  border:1px solid transparent; border-bottom:none; margin-bottom:-1px; border-radius:3px 3px 0 0;
+}
+.psdb-ao .wf-tab.active { background:#f0f0f0; border-color:#bbb; color:#000; font-weight:600; }
+.psdb-ao .wf-body { display:grid; grid-template-columns:340px 1fr; min-height:320px; }
+.psdb-ao .pane-left { border-right:1px solid #ccc; display:flex; flex-direction:column; }
+.psdb-ao .pane-label {
+  background:#d4d4d4; border-bottom:1px solid #bbb;
+  padding:3px 8px; font-size:.72rem; font-weight:700; color:#444; letter-spacing:.04em;
+}
+.psdb-ao .pg { flex:1; overflow:hidden; font-size:.78rem; }
+.psdb-ao .pg-cat {
+  background:#c8d8e8; color:#003070; font-weight:700; font-size:.74rem;
+  padding:3px 8px; border-bottom:1px solid #b0c4d8; letter-spacing:.03em;
+}
+.psdb-ao .pg-row { display:flex; border-bottom:1px solid #e0e0e0; }
+.psdb-ao .pg-row:nth-child(even) { background:#f5f8fc; }
+.psdb-ao .pg-key {
+  width:140px; flex-shrink:0; padding:3px 6px 3px 10px;
+  color:#333; border-right:1px solid #ccc; font-size:.77rem;
+}
+.psdb-ao .pg-key.ro { color:#666; font-style:italic; }
+.psdb-ao .pg-val { flex:1; padding:3px 6px; color:#003070; font-weight:500; font-size:.77rem; }
+.psdb-ao .pg-val.pg-expand { color:#0050a0; cursor:default; }
+.psdb-ao .pg-val.enum { color:#555; }
+.psdb-ao .pg-val.pw { letter-spacing:3px; color:#333; }
+.psdb-ao .pg-row.pg-sub .pg-key { padding-left:22px; color:#555; font-size:.75rem; }
+.psdb-ao .pg-row.pg-sub .pg-val { color:#444; font-weight:400; font-size:.75rem; }
+.psdb-ao .pane-btns {
+  border-top:1px solid #ccc; background:#e8e8e8;
+  padding:6px 8px; display:flex; gap:6px;
+}
+.psdb-ao .pane-right { display:flex; flex-direction:column; }
+.psdb-ao .log-area {
+  flex:1; background:#1a1a2e; padding:8px 10px;
+  font-family:Consolas,'Cascadia Code',monospace; font-size:.74rem; line-height:1.6;
+  overflow:hidden; max-height:300px;
+}
+.psdb-ao .log-area div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.psdb-ao .log-t  { color:#666; margin-right:6px; }
+.psdb-ao .log-b  { color:#5dade2; font-weight:600; }
+.psdb-ao .log-i  { color:#9cdcfe; }
+.psdb-ao .log-s  { color:#4ade80; }
+.psdb-ao .log-w  { color:#f0c040; }
+.psdb-ao .log-btns {
+  border-top:1px solid #ccc; background:#e8e8e8;
+  padding:6px 8px; display:flex; gap:6px;
+}
+.psdb-ao .wf-btn {
+  padding:3px 12px; background:#e1e1e1;
+  border:1px solid #aaa; border-radius:2px; cursor:default;
+  font-size:.78rem; color:#222;
+}
+.psdb-ao .wf-btn.primary { background:#0078d7; color:#fff; border-color:#005fa3; font-weight:600; }
+.psdb-ao .wf-btn.hidden { opacity:.45; }
+.psdb-ao .wf-status {
+  background:#e8e8e8; border-top:1px solid #ccc;
+  padding:4px 10px; display:flex; align-items:center; font-size:.75rem; color:#333;
+}
+.psdb-ao .status-ready { color:#16a34a; font-weight:600; }
 
 /* ── Timeline ──────────────────────────────────────────── */
 .timeline { display:flex; align-items:stretch; gap:0; margin:.6rem 0; flex-wrap:wrap; }
@@ -353,68 +405,106 @@
   <h1>The Interface</h1>
   <p style="margin-bottom:.6rem;">Cluster-Daten werden automatisch eingelesen. PropertyGrid links — Live-Log rechts.</p>
 
-  <div class="wf-mock">
-    <div class="wf-tbar">
+  <div class="psdb-ao">
+  <div class="gui-wrap">
+  <div class="wf">
+
+    <!-- Title bar -->
+    <div class="wf-title">
       <span>🔷 SQL Server AlwaysOn Setup Tool v1.0.0</span>
-      <div class="wf-btns">
-        <div class="wf-btn-w">–</div><div class="wf-btn-w">□</div><div class="wf-btn-w wf-x">✕</div>
+      <div class="wf-title-btns">
+        <div class="wf-tbtn min">–</div>
+        <div class="wf-tbtn max">□</div>
+        <div class="wf-tbtn cls">✕</div>
       </div>
     </div>
-    <div style="background:#e8e8e8;border-bottom:1px solid #ccc;padding:2px 8px;display:flex;gap:4px;">
-      <span style="padding:2px 8px;background:transparent;border:1px solid transparent;border-radius:2px;font-size:.68rem;color:#222;cursor:default;">⟳ Cluster-Daten laden</span>
-      <span style="width:1px;height:18px;background:#bbb;margin:0 3px;display:inline-block;"></span>
-      <span style="padding:2px 8px;font-size:.68rem;color:#222;cursor:default;">✔ AD-Konto validieren</span>
+
+    <!-- ToolStrip -->
+    <div class="wf-toolbar">
+      <button class="ts-btn"><span class="ts-icon">⟳</span> Cluster-Daten laden</button>
+      <div class="ts-sep"></div>
+      <button class="ts-btn"><span class="ts-icon">✔</span> AD-Konto validieren</button>
     </div>
-    <div class="wf-content">
-      <div class="wf-left">
-        <div class="pane-lbl">① KONFIGURATION (PropertyGrid)</div>
+
+    <!-- TabControl -->
+    <div class="wf-tabs">
+      <div class="wf-tab active">Konfiguration</div>
+    </div>
+
+    <!-- SplitContainer -->
+    <div class="wf-body">
+
+      <!-- Left: PropertyGrid -->
+      <div class="pane-left">
+        <div class="pane-label">① KONFIGURATION (PropertyGrid)</div>
         <div class="pg">
-          <div class="pg-cat">1 – Cluster</div>
-          <div class="pg-row"><div class="pg-k ro">Cluster-Name</div><div class="pg-v en">SQLCLUSTER01</div></div>
-          <div class="pg-row"><div class="pg-k ro">Listener-IP</div><div class="pg-v en">10.0.1.50</div></div>
-          <div class="pg-row"><div class="pg-k ro">Listener-Port</div><div class="pg-v en">1433</div></div>
-          <div class="pg-cat">2 – Nodes</div>
-          <div class="pg-row"><div class="pg-k">Node 1</div><div class="pg-v">SQLNODE01\MSSQLSERVER</div></div>
-          <div class="pg-row"><div class="pg-k">Node 2</div><div class="pg-v">SQLNODE02\MSSQLSERVER</div></div>
-          <div class="pg-cat">3 – Availability Group</div>
-          <div class="pg-row"><div class="pg-k">AG-Name</div><div class="pg-v">AG_PROD_01</div></div>
-          <div class="pg-row"><div class="pg-k">Endpoint-Port</div><div class="pg-v">5022</div></div>
-          <div class="pg-row"><div class="pg-k">Failover-Modus</div><div class="pg-v en">Automatic ▾</div></div>
-          <div class="pg-row"><div class="pg-k">Test-Datenbank</div><div class="pg-v">AG_TestDB</div></div>
-          <div class="pg-cat">4 – Service-Konto</div>
-          <div class="pg-row"><div class="pg-k">Dienst-Konto</div><div class="pg-v">HLB\svc-sql-prod</div></div>
-          <div class="pg-row"><div class="pg-k">Kennwort</div><div class="pg-v" style="letter-spacing:3px;color:#555;">••••••••</div></div>
+          <div class="pg-cat">1 - Cluster</div>
+          <div class="pg-row"><div class="pg-key ro">Cluster-Name</div><div class="pg-val">SQLCLUSTER01</div></div>
+          <div class="pg-row"><div class="pg-key ro">Listener-Name</div><div class="pg-val">AG-LISTENER01</div></div>
+          <div class="pg-row"><div class="pg-key ro">Listener-IP</div><div class="pg-val">10.0.1.50</div></div>
+          <div class="pg-row"><div class="pg-key ro">Listener-Port</div><div class="pg-val">1433</div></div>
+          <div class="pg-cat">2 - Nodes</div>
+          <div class="pg-row"><div class="pg-key">Node 1</div><div class="pg-val pg-expand">▶ SQLNODE01\MSSQLSERVER</div></div>
+          <div class="pg-row pg-sub"><div class="pg-key"> SQL-Instanz</div><div class="pg-val">SQLNODE01\MSSQLSERVER</div></div>
+          <div class="pg-row pg-sub"><div class="pg-key"> Hostname</div><div class="pg-val">SQLNODE01</div></div>
+          <div class="pg-row pg-sub"><div class="pg-key"> AlwaysOn-Status</div><div class="pg-val">Disabled</div></div>
+          <div class="pg-row"><div class="pg-key">Node 2</div><div class="pg-val pg-expand">▶ SQLNODE02\MSSQLSERVER</div></div>
+          <div class="pg-row"><div class="pg-key">Node 3</div><div class="pg-val" style="color:#bbb;font-style:italic;">(leer)</div></div>
+          <div class="pg-cat">3 - Availability Group</div>
+          <div class="pg-row"><div class="pg-key">AG-Name</div><div class="pg-val">AG_PROD_01</div></div>
+          <div class="pg-row"><div class="pg-key">Endpoint-Port</div><div class="pg-val">5022</div></div>
+          <div class="pg-row"><div class="pg-key">Failover-Modus</div><div class="pg-val enum">Automatic ▾</div></div>
+          <div class="pg-row"><div class="pg-key">Backup-Präferenz</div><div class="pg-val enum">Primary ▾</div></div>
+          <div class="pg-row"><div class="pg-key">Test-Datenbank</div><div class="pg-val">AG_TestDB</div></div>
+          <div class="pg-cat">4 - SQL Service-Konto</div>
+          <div class="pg-row"><div class="pg-key">Dienst-Konto</div><div class="pg-val">HLB\svc-sql-prod</div></div>
+          <div class="pg-row"><div class="pg-key">Kennwort</div><div class="pg-val pw">••••••••••••</div></div>
         </div>
-        <div class="wf-pane-btns">
-          <div class="wf-pb wf-pb-p">② Konfiguration starten</div>
-          <div class="wf-pb">Schließen</div>
-        </div>
-      </div>
-      <div class="wf-right">
-        <div class="pane-lbl">④ PROTOKOLL (Live-Log)</div>
-        <div class="log-mock">
-          <div><span class="lt">[10:14:22]</span><span class="lb">=== Cluster- und SQL-Informationen einlesen ===</span></div>
-          <div><span class="lt">[10:14:23]</span><span class="li">Nodes: SQLNODE01, SQLNODE02 · Listener: 10.0.1.50:1433</span></div>
-          <div><span class="lt">[10:14:24]</span><span class="lg">Eingelesen: SQLCLUSTER01 – OK</span></div>
-          <div><span class="lt">[10:15:01]</span><span class="lb">=== Schritt 2: HADR aktivieren ===</span></div>
-          <div><span class="lt">[10:15:03]</span><span class="lg">SQLNODE01: HADR aktiviert – Dienst neu gestartet</span></div>
-          <div><span class="lt">[10:15:14]</span><span class="lg">SQLNODE01: SQL Server wieder erreichbar</span></div>
-          <div><span class="lt">[10:15:22]</span><span class="lb">=== Schritt 3: Endpoint erstellen ===</span></div>
-          <div><span class="lt">[10:15:23]</span><span class="lg">SQLNODE01: Endpoint 'Hadr_endpoint' (5022) angelegt</span></div>
-          <div><span class="lt">[10:15:31]</span><span class="lg">AG_PROD_01 erfolgreich angelegt ✓</span></div>
-          <div><span class="lt">[10:15:32]</span><span class="lw">⚠ SPN MSSQLSvc/SQLNODE02:1433 fehlt</span></div>
-        </div>
-        <div class="wf-pane-btns">
-          <div class="wf-pb">⑤ Log löschen</div>
-          <div class="wf-pb">💾 Log speichern (RTF)</div>
+        <div class="pane-btns">
+          <button class="wf-btn primary">② Konfiguration starten</button>
+          <button class="wf-btn">Schließen</button>
+          <button class="wf-btn hidden">③ Weiter</button>
         </div>
       </div>
-    </div>
+
+      <!-- Right: Log -->
+      <div class="pane-right">
+        <div class="pane-label">④ PROTOKOLL (Live-Log)</div>
+        <div class="log-area">
+          <div><span class="log-t">[10:14:22]</span> <span class="log-b">=== Cluster- und SQL-Informationen einlesen ===</span></div>
+          <div><span class="log-t">[10:14:22]</span> <span class="log-i">Cluster gefunden: SQLCLUSTER01</span></div>
+          <div><span class="log-t">[10:14:23]</span> <span class="log-i">Nodes: SQLNODE01, SQLNODE02</span></div>
+          <div><span class="log-t">[10:14:23]</span> <span class="log-i">Listener: AG-LISTENER01 IP: 10.0.1.50 Port: 1433</span></div>
+          <div><span class="log-t">[10:14:24]</span> <span class="log-s">Eingelesen: SQLCLUSTER01 - OK</span></div>
+          <div>&nbsp;</div>
+          <div><span class="log-t">[10:15:01]</span> <span class="log-b">=== Schritt 2: HADR aktivieren ===</span></div>
+          <div><span class="log-t">[10:15:03]</span> <span class="log-s">SQLNODE01: HADR aktiviert - Dienst wird neu gestartet</span></div>
+          <div><span class="log-t">[10:15:14]</span> <span class="log-s">SQLNODE01: SQL Server wieder erreichbar</span></div>
+          <div><span class="log-t">[10:15:14]</span> <span class="log-s">SQLNODE02: HADR aktiviert - Dienst wird neu gestartet</span></div>
+          <div><span class="log-t">[10:15:22]</span> <span class="log-b">=== Schritt 3: Endpoint erstellen ===</span></div>
+          <div><span class="log-t">[10:15:23]</span> <span class="log-s">SQLNODE01: Endpoint 'Hadr_endpoint' (5022) angelegt</span></div>
+          <div><span class="log-t">[10:15:23]</span> <span class="log-s">SQLNODE02: Endpoint 'Hadr_endpoint' (5022) angelegt</span></div>
+          <div><span class="log-t">[10:15:24]</span> <span class="log-b">=== Schritt 6: Availability Group anlegen ===</span></div>
+          <div><span class="log-t">[10:15:31]</span> <span class="log-s">AG_PROD_01 erfolgreich angelegt ✓</span></div>
+          <div><span class="log-t">[10:15:32]</span> <span class="log-w">SPN MSSQLSvc/SQLNODE02:1433 fehlt - Bitte AD-Team informieren</span></div>
+        </div>
+        <div class="log-btns">
+          <button class="wf-btn">⑤ Log löschen</button>
+          <button class="wf-btn">💾 Log speichern (RTF)</button>
+        </div>
+      </div>
+
+    </div><!-- /wf-body -->
+
+    <!-- StatusStrip -->
     <div class="wf-status">
-      <span class="status-ok">⑥ AG_PROD_01 erfolgreich konfiguriert</span>
+      <span class="status-ready">⑥ AG_PROD_01 erfolgreich konfiguriert</span>
       <span style="margin-left:auto;color:#666;">SPN-Datei: C:\System\WinSrvLog\MSSQL\AlwaysOn_SPN_ADTeam_20260513.txt</span>
     </div>
-  </div>
+
+  </div><!-- /wf -->
+  </div><!-- /gui-wrap -->
+  </div><!-- /psdb-ao -->
 </section>
 
 <!-- ══════════════════════════════════════════════════════
