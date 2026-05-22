@@ -1496,9 +1496,125 @@ REPLICA ON
 
 
     # ------------------------------------------------------------------ #
-    # 8. Abschlussstatus per T-SQL                                        #
+    # 8. AG-Sync Job auf allen Nodes anlegen                             #
+    #    Synchronisiert Logins, Agent-Jobs und Linked Server vom Primary  #
+    #    zum Secondary. Laeuft auf beiden Nodes, prueft selbst ob Primary. #
+    #    Named Instance sicher: Instanzname beim Anlegen eingebettet.    #
     # ------------------------------------------------------------------ #
-    Write-RtfSection -Rtb $Rtb -Msg 'Konfiguration abgeschlossen – Status'
+    Write-RtfSection -Rtb $Rtb -Msg 'Schritt 8: AG-Sync Job anlegen'
+    try {
+        $jobName     = 'AG Sync - Logins, Jobs, LinkedServer'
+        $jobCategory = 'Database Maintenance'
+        $jobDesc     = 'Synchronisiert Logins, Agent-Jobs und Linked Server vom Primary zum Secondary. Wird auf allen AG-Nodes ausgefuehrt, laeuft aber nur auf dem aktuellen Primary.'
+        $jobSchedule = 'AG Sync täglich 02:00'
+
+        foreach ($nc in $activeNodes) {
+            try {
+                # Gegenknoten ermitteln (alle anderen Nodes)
+                $otherInstances = ($activeNodes |
+                    Where-Object { $_.SqlInstance -ne $nc.SqlInstance } |
+                    ForEach-Object { $_.SqlInstance }) -join "','"
+
+                # Instanznamen fest einbetten – Named Instance sicher
+                $thisInst  = $nc.SqlInstance
+                $jobScript = @"
+Import-Module dbatools -ErrorAction Stop
+
+# Instanznamen beim Job-Anlegen eingebettet (Named Instance sicher)
+`$thisInstance   = '$thisInst'
+`$otherInstances = @('$otherInstances')
+
+# Nur auf dem aktuellen Primary ausfuehren
+try {
+    `$primary = (Invoke-DbaQuery -SqlInstance `$thisInstance ``
+        -Query 'SELECT primary_replica FROM sys.dm_hadr_availability_group_states' ``
+        -ErrorAction Stop).primary_replica
+} catch {
+    Write-Output "Fehler bei Primary-Ermittlung: `$_"; exit 1
+}
+
+if (`$thisInstance -ne `$primary) {
+    Write-Output "Dieser Node (`$thisInstance) ist nicht Primary (`$primary) - kein Sync noetig."; exit 0
+}
+
+# Sync zu allen Secondary-Nodes
+foreach (`$dest in `$otherInstances) {
+    Write-Output "Sync von `$thisInstance nach `$dest ..."
+    try {
+        Copy-DbaLogin        -Source `$thisInstance -Destination `$dest ``
+                             -SyncSysDbPermissions -ExcludeSystemLogin -EnableException
+        Write-Output "  Logins: OK"
+    } catch { Write-Output "  Logins: FEHLER - `$_" }
+    try {
+        Copy-DbaAgentJob     -Source `$thisInstance -Destination `$dest ``
+                             -ExcludeJob 'AG Sync*' -EnableException
+        Write-Output "  Agent-Jobs: OK"
+    } catch { Write-Output "  Agent-Jobs: FEHLER - `$_" }
+    try {
+        Copy-DbaLinkedServer -Source `$thisInstance -Destination `$dest ``
+                             -EnableException
+        Write-Output "  Linked Server: OK"
+    } catch { Write-Output "  Linked Server: FEHLER - `$_" }
+    Write-Output "Sync nach `$dest abgeschlossen."
+}
+"@
+
+                # Job bereits vorhanden?
+                $jobExists = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                    -Query "SELECT name FROM msdb.dbo.sysjobs WHERE name = N'$jobName'" `
+                    -ErrorAction SilentlyContinue | Select-Object -First 1
+
+                if ($jobExists) {
+                    Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job '$jobName' bereits vorhanden – wird aktualisiert."
+                    Remove-DbaAgentJob -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                        -Job $jobName -Confirm:$false -EnableException
+                }
+
+                # Job anlegen
+                $job = New-DbaAgentJob -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                    -Job $jobName -Description $jobDesc -Category $jobCategory `
+                    -OwnerLogin 'sa' -EnableException
+
+                # Job-Step anlegen (PowerShell)
+                New-DbaAgentJobStep -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                    -Job $jobName -StepName 'AG Sync via dbatools' `
+                    -Subsystem PowerShell -Command $jobScript `
+                    -OnSuccessAction QuitWithSuccess -OnFailAction QuitWithFailure `
+                    -EnableException | Out-Null
+
+                # Zeitplan: täglich 02:00 Uhr
+                $schedExists = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                    -Query "SELECT name FROM msdb.dbo.sysschedules WHERE name = N'$jobSchedule'" `
+                    -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $schedExists) {
+                    New-DbaAgentSchedule -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                        -Job $jobName -Schedule $jobSchedule `
+                        -FrequencyType Daily -FrequencyInterval 1 `
+                        -StartTime '020000' -EnableException | Out-Null
+                } else {
+                    Set-DbaAgentJobSchedule -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                        -Job $jobName -ScheduleName $jobSchedule -Enabled -EnableException | Out-Null
+                }
+
+                # Job aktivieren
+                Set-DbaAgentJob -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                    -Job $jobName -Enabled -EnableException | Out-Null
+
+                Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job '$jobName' angelegt (täglich 02:00)."
+
+            } catch {
+                Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job-Anlage fehlgeschlagen – $_"
+            }
+        }
+    } catch {
+        Write-RtfError -Rtb $Rtb -Msg "  AG-Sync Job fehlgeschlagen – $_"
+    }
+
+
+    # ------------------------------------------------------------------ #
+    # 9. Abschlussstatus per T-SQL                                        #
+    # ------------------------------------------------------------------ #
+    Write-RtfSection -Rtb $Rtb -Msg 'Schritt 9: Konfiguration abgeschlossen – Status'
     Start-Sleep -Seconds 5   # AG-DMVs kurz Zeit geben sich zu füllen
     try {
         $agStatus = Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred `
@@ -1530,9 +1646,9 @@ REPLICA ON
     Write-RtfSuccess -Rtb $Rtb -Msg 'Fertig.'
 
     # ------------------------------------------------------------------ #
-    # 9. SPN-Prüfung via setspn                                           #
+    # 10. SPN-Prüfung via setspn                                          #
     # ------------------------------------------------------------------ #
-    Write-RtfSection -Rtb $Rtb -Msg 'Schritt 9: SPN-Prüfung'
+    Write-RtfSection -Rtb $Rtb -Msg 'Schritt 10: SPN-Prüfung'
     try {
         # Dienstkonto ermitteln – aktuelles Konto aus Konfiguration oder Original
         $spnAccount = if ($Config.ServiceAccount) { $Config.ServiceAccount } else { $script:originalServiceAccount }
