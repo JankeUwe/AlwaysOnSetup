@@ -187,6 +187,25 @@ if ($dbaOk -and -not (Get-Module -Name dbatools        -ErrorAction SilentlyCont
 Write-Host "=== Modul-Prüfung abgeschlossen ==="
 
 # ---------------------------------------------------------------------------
+# INI-Konfiguration einlesen
+# ---------------------------------------------------------------------------
+$script:iniConfig = @{
+    AG_SYNC_JOB_NAME = ''   # leer = Standardname verwenden
+}
+$iniFile = Join-Path $PSScriptRoot 'AlwaysOnSetup.ini'
+if (Test-Path $iniFile) {
+    Get-Content $iniFile | Where-Object { $_ -match '^\s*[^;].*=' } | ForEach-Object {
+        $parts = $_ -split '=', 2
+        $key   = $parts[0].Trim()
+        $value = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '' }
+        if ($script:iniConfig.ContainsKey($key)) {
+            $script:iniConfig[$key] = $value
+        }
+    }
+    Write-Host "INI geladen: $iniFile"
+}
+
+# ---------------------------------------------------------------------------
 # Hilfsfunktionen
 # ---------------------------------------------------------------------------
 
@@ -1503,7 +1522,14 @@ REPLICA ON
     # ------------------------------------------------------------------ #
     Write-RtfSection -Rtb $Rtb -Msg 'Schritt 8: AG-Sync Job anlegen'
     try {
-        $jobName     = 'AG Sync - Logins, Jobs, LinkedServer'
+        # Job-Name: INI-Wert wenn gesetzt, sonst Standardname
+        $jobNameDefault = 'AG Sync - Logins, Jobs, LinkedServer'
+        $jobName = if ($script:iniConfig['AG_SYNC_JOB_NAME']) {
+            $script:iniConfig['AG_SYNC_JOB_NAME']
+        } else {
+            $jobNameDefault
+        }
+        Write-RtfInfo -Rtb $Rtb -Msg "  Job-Name: '$jobName'$(if ($script:iniConfig['AG_SYNC_JOB_NAME']) {' (aus INI)'} else {' (Standardname)'})"
         $jobCategory = 'Database Maintenance'
         $jobDesc     = 'Synchronisiert Logins, Agent-Jobs und Linked Server vom Primary zum Secondary. Wird auf allen AG-Nodes ausgefuehrt, laeuft aber nur auf dem aktuellen Primary.'
         $jobSchedule = 'AG Sync täglich 02:00'
