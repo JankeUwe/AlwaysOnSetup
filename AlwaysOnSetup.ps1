@@ -1089,8 +1089,12 @@ function Invoke-AlwaysOnSteps {
 
             if (-not $hadrEnabled) {
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): HADR wird aktiviert ..."
+                # show advanced options in separatem Aufruf – RECONFIGURE muss wirksam sein
+                # bevor sp_configure 'hadr enabled' aufgerufen wird
                 Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop `
-                    -Query "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'hadr enabled', 1; RECONFIGURE;"
+                    -Query "EXEC sp_configure 'show advanced options', 1; RECONFIGURE;"
+                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop `
+                    -Query "EXEC sp_configure 'hadr enabled', 1; RECONFIGURE;"
 
                 $svcName = if ($nc.SqlInstance -match '\\') {
                     'MSSQL$' + ($nc.SqlInstance -split '\\')[1]
