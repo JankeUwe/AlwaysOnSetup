@@ -1002,20 +1002,28 @@ function Invoke-AlwaysOnSteps {
         $upnUser   = $Config.ServiceAccount -replace '@.*$', ''
         $upnSuffix = $Config.ServiceAccount -replace '^[^@]+@', ''
 
-        # NetBIOS-Domänenname sicher aus AD ermitteln
+        # NetBIOS-Domänenname der SERVICE-KONTO-Domäne ermitteln (nicht die des laufenden Users!)
+        # Beispiel: SvcXY@bayernlb.sfinance.net -> NetBIOS-Name von bayernlb.sfinance.net = BLBMASTER
         $netBiosName = ''
         try {
-            $adDomain    = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+            $domCtx  = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext(
+                           'Domain', $upnSuffix)
+            $adDomain    = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($domCtx)
             $netBiosName = $adDomain.GetDirectoryEntry().Properties['name'].Value
             if (-not $netBiosName) { throw 'Leer' }
         } catch {
-            # Fallback: ersten Teil des UPN-Suffixes verwenden und in Großbuchstaben
-            $netBiosName = ($upnSuffix -split '\.')[0].ToUpper()
-            Write-RtfWarn -Rtb $Rtb -Msg "  NetBIOS-Name via AD nicht ermittelbar – Fallback: '$netBiosName' (aus UPN-Suffix)"
+            # Fallback: NetBIOS per Get-ADDomain versuchen
+            try {
+                $netBiosName = (Get-ADDomain -Server $upnSuffix -ErrorAction Stop).NetBIOSName
+            } catch {
+                # Letzter Fallback: ersten Teil des UPN-Suffixes (unzuverlaessig)
+                $netBiosName = ($upnSuffix -split '\.')[0].ToUpper()
+                Write-RtfWarn -Rtb $Rtb -Msg "  NetBIOS-Name nicht ermittelbar – Fallback: '$netBiosName' (aus UPN-Suffix, moeglicherweise falsch)"
+            }
         }
 
         $converted = "$netBiosName\$upnUser"
-        Write-RtfInfo -Rtb $Rtb -Msg "  UPN '$($Config.ServiceAccount)' wird konvertiert nach '$converted'"
+        Write-RtfInfo -Rtb $Rtb -Msg "  UPN '$($Config.ServiceAccount)' konvertiert: '$converted' (NetBIOS: $netBiosName)"
         $Config.ServiceAccount = $converted
     }
 
