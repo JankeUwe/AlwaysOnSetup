@@ -909,10 +909,13 @@ function Invoke-AlwaysOnSteps {
     # Wird einmalig durchgeführt – alle Folgeschritte nutzen den          #
     # normalisierten DOMAIN\User-Format                                   #
     # ------------------------------------------------------------------ #
+    # Original-UPN merken (fuer CREATE LOGIN Fallback bei Cross-Domain-Konten)
+    $script:serviceAccountUpn = if ($Config.ServiceAccount -match '@') { $Config.ServiceAccount } else { $null }
+
     if ($Config.ServiceAccount -and $Config.ServiceAccount -match '@') {
         $upnUser   = $Config.ServiceAccount -replace '@.*$', ''
         $upnSuffix = $Config.ServiceAccount -replace '^[^@]+@', ''
- 
+
         # NetBIOS-Domänenname sicher aus AD ermitteln
         $netBiosName = ''
         try {
@@ -924,7 +927,7 @@ function Invoke-AlwaysOnSteps {
             $netBiosName = ($upnSuffix -split '\.')[0].ToUpper()
             Write-RtfWarn -Rtb $Rtb -Msg "  NetBIOS-Name via AD nicht ermittelbar – Fallback: '$netBiosName' (aus UPN-Suffix)"
         }
- 
+
         $converted = "$netBiosName\$upnUser"
         Write-RtfInfo -Rtb $Rtb -Msg "  UPN '$($Config.ServiceAccount)' wird konvertiert nach '$converted'"
         $Config.ServiceAccount = $converted
@@ -993,7 +996,7 @@ function Invoke-AlwaysOnSteps {
             if (-not $hadrEnabled) {
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): HADR wird aktiviert ..."
                 Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop `
-                    -Query "EXEC sp_configure 'hadr enabled', 1; RECONFIGURE;"
+                    -Query "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'hadr enabled', 1; RECONFIGURE;"
 
                 $svcName = if ($nc.SqlInstance -match '\\') {
                     'MSSQL$' + ($nc.SqlInstance -split '\\')[1]
@@ -1077,18 +1080,39 @@ CREATE ENDPOINT [HADR_Endpoint]
 
         foreach ($nc in $activeNodes) {
             try {
-                # Login per T-SQL prüfen
+                # Login prüfen – beide Formate (DOMAIN\User und UPN) abdecken
+                $loginCheckSql = "SELECT name FROM sys.server_principals WHERE name IN (N'$($Config.ServiceAccount)'"
+                if ($script:serviceAccountUpn) { $loginCheckSql += ", N'$($script:serviceAccountUpn)'" }
+                $loginCheckSql += ')'
                 $loginCheck = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                    -Query "SELECT name FROM sys.server_principals WHERE name = N'$($Config.ServiceAccount)'" `
-                    -ErrorAction SilentlyContinue | Select-Object -First 1
+                    -Query $loginCheckSql -ErrorAction SilentlyContinue | Select-Object -First 1
+
+                # Tatsächlich verwendeter Login-Name (fuer GRANT CONNECT)
+                $actualLoginName = if ($loginCheck) { $loginCheck.name } else { $Config.ServiceAccount }
+
                 if (-not $loginCheck) {
                     Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login '$($Config.ServiceAccount)' wird angelegt ..."
-                    Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                        -Query "CREATE LOGIN [$($Config.ServiceAccount)] FROM WINDOWS" `
-                        -ErrorAction Stop
-                    Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login angelegt."
+                    try {
+                        # Versuch 1: DOMAIN\User Format
+                        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                            -Query "CREATE LOGIN [$($Config.ServiceAccount)] FROM WINDOWS" `
+                            -EnableException:$true
+                        Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login angelegt (DOMAIN\User)."
+                    } catch {
+                        if ($_.Exception.Message -match 'Windows NT user or group.*not found' -and $script:serviceAccountUpn) {
+                            # Versuch 2: UPN-Format (Cross-Domain-Fallback)
+                            Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): DOMAIN\User nicht auflösbar – versuche UPN-Format '$($script:serviceAccountUpn)' ..."
+                            Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                                -Query "CREATE LOGIN [$($script:serviceAccountUpn)] FROM WINDOWS" `
+                                -ErrorAction Stop
+                            $actualLoginName = $script:serviceAccountUpn
+                            Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login angelegt (UPN-Format)."
+                        } else {
+                            throw
+                        }
+                    }
                 } else {
-                    Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login bereits vorhanden – übersprungen."
+                    Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login '$actualLoginName' bereits vorhanden – übersprungen."
                 }
 
                 # Endpoint per T-SQL prüfen, dann CONNECT grantieren
@@ -1097,9 +1121,9 @@ CREATE ENDPOINT [HADR_Endpoint]
                     -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($epExists) {
                     Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                        -Query "GRANT CONNECT ON ENDPOINT::[HADR_Endpoint] TO [$($Config.ServiceAccount)]" `
+                        -Query "GRANT CONNECT ON ENDPOINT::[HADR_Endpoint] TO [$actualLoginName]" `
                         -ErrorAction Stop
-                    Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): CONNECT-Berechtigung gesetzt."
+                    Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): CONNECT-Berechtigung gesetzt für '$actualLoginName'."
                 }
             } catch {
                 Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Fehler in Schritt 4 – $_"
