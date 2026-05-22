@@ -789,6 +789,92 @@ function Remove-SetupCredential {
 }
 
 # ---------------------------------------------------------------------------
+# Hilfsfunktion: Zertifikat-basierte Endpoint-Authentifizierung
+# Fallback wenn CREATE LOGIN FROM WINDOWS cross-domain nicht funktioniert.
+# Jeder Node bekommt ein selbst-signiertes Zertifikat, tauscht es mit dem
+# anderen Node aus – kein AD-Lookup nötig.
+# ---------------------------------------------------------------------------
+function _Set-HadrEndpointCertAuth {
+    param(
+        [array]  $ActiveNodes,
+        $SqlCred,
+        $Rtb,
+        [string] $PrimaryInstance
+    )
+
+    $certs   = @{}   # Node -> Zertifikatname
+    $tmpPath = 'C:\Temp'
+
+    # Sicherstellen dass C:\Temp auf allen Nodes existiert
+    foreach ($nc in $ActiveNodes) {
+        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true `
+            -Query "EXEC xp_create_subdir N'$tmpPath'"
+    }
+
+    # Phase 1: Master Key + Zertifikat auf jedem Node erstellen und exportieren
+    foreach ($nc in $ActiveNodes) {
+        $short    = ($nc.Hostname -split '\.')[0].ToUpper()
+        $certName = "HADR_Cert_$short"
+        $cerFile  = "$tmpPath\$certName.cer"
+        $certs[$nc.SqlInstance] = @{ CertName = $certName; CerFile = $cerFile; Short = $short }
+
+        Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Erstelle Zertifikat '$certName' ..."
+
+        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true -Query @"
+IF NOT EXISTS (SELECT 1 FROM sys.symmetric_keys WHERE name = '##MS_DatabaseMasterKey##')
+    CREATE MASTER KEY ENCRYPTION BY PASSWORD = '$(New-RandomPassword -Length 32)';
+IF NOT EXISTS (SELECT 1 FROM sys.certificates WHERE name = N'$certName')
+    CREATE CERTIFICATE [$certName]
+        WITH SUBJECT = 'AlwaysOn Endpoint Certificate $short',
+        EXPIRY_DATE  = '2035-12-31';
+BACKUP CERTIFICATE [$certName] TO FILE = N'$cerFile';
+"@
+        Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Zertifikat erstellt und exportiert nach '$cerFile'."
+    }
+
+    # Phase 2: Zertifikate kreuzweise importieren + Endpoint umstellen
+    foreach ($nc in $ActiveNodes) {
+        $myInfo = $certs[$nc.SqlInstance]
+
+        # Endpoint auf eigenes Zertifikat umstellen
+        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true `
+            -Query "ALTER ENDPOINT [HADR_Endpoint] FOR DATABASE_MIRRORING (AUTHENTICATION = CERTIFICATE [$($myInfo.CertName)]);"
+        Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Endpoint auf Zertifikat-Auth umgestellt."
+
+        # Fremdzertifikate importieren
+        foreach ($other in $ActiveNodes | Where-Object { $_.SqlInstance -ne $nc.SqlInstance }) {
+            $otherInfo  = $certs[$other.SqlInstance]
+            $loginName  = "HADR_Login_$($otherInfo.Short)"
+            $userName   = "HADR_User_$($otherInfo.Short)"
+
+            # Zertifikatdatei vom anderen Node kopieren (UNC)
+            $uncSrc = $otherInfo.CerFile -replace '^(\w):\\', "\\$($other.Hostname)\`$1`$\"
+            $uncDst = $myInfo.CerFile    -replace '^(\w):\\', "\\$($nc.Hostname)\`$1`$\"
+            if (-not (Test-Path $uncSrc)) { throw "Zertifikatdatei nicht erreichbar: $uncSrc" }
+            if ($uncSrc -ne $uncDst) { Copy-Item $uncSrc -Destination ($uncDst -replace '[^\\]+$', '') -Force }
+
+            Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true -Query @"
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'$loginName')
+    CREATE LOGIN [$loginName] WITH PASSWORD = '$(New-RandomPassword -Length 32)';
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'$userName')
+BEGIN
+    USE master;
+    CREATE USER [$userName] FOR LOGIN [$loginName];
+END
+IF NOT EXISTS (SELECT 1 FROM sys.certificates WHERE name = N'$($otherInfo.CertName)')
+    CREATE CERTIFICATE [$($otherInfo.CertName)]
+        AUTHORIZATION [$userName]
+        FROM FILE = N'$($otherInfo.CerFile)';
+GRANT CONNECT ON ENDPOINT::[HADR_Endpoint] TO [$loginName];
+"@
+            Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Zertifikat von '$($other.SqlInstance)' importiert, CONNECT gesetzt."
+        }
+    }
+
+    Write-RtfSuccess -Rtb $Rtb -Msg "  Zertifikat-basierte Endpoint-Authentifizierung auf allen Nodes konfiguriert."
+}
+
+# ---------------------------------------------------------------------------
 # Haupt-Konfigurationsroutine
 # ---------------------------------------------------------------------------
 function Start-AlwaysOnConfiguration {
@@ -1092,23 +1178,46 @@ CREATE ENDPOINT [HADR_Endpoint]
 
                 if (-not $loginCheck) {
                     Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login '$($Config.ServiceAccount)' wird angelegt ..."
+                    $loginCreated = $false
+
+                    # Versuch 1: DOMAIN\User Format
                     try {
-                        # Versuch 1: DOMAIN\User Format
                         Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
                             -Query "CREATE LOGIN [$($Config.ServiceAccount)] FROM WINDOWS" `
                             -EnableException:$true
+                        $actualLoginName = $Config.ServiceAccount
+                        $loginCreated    = $true
                         Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login angelegt (DOMAIN\User)."
                     } catch {
-                        if ($_.Exception.Message -match 'Windows NT user or group.*not found' -and $script:serviceAccountUpn) {
-                            # Versuch 2: UPN-Format (Cross-Domain-Fallback)
-                            Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): DOMAIN\User nicht auflösbar – versuche UPN-Format '$($script:serviceAccountUpn)' ..."
+                        Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): DOMAIN\User nicht auflösbar ('$($_.Exception.Message -replace '\r?\n',' ')')"
+                    }
+
+                    # Versuch 2: UPN-Format (Cross-Domain-Fallback)
+                    if (-not $loginCreated -and $script:serviceAccountUpn) {
+                        Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): Versuche UPN-Format '$($script:serviceAccountUpn)' ..."
+                        try {
                             Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
                                 -Query "CREATE LOGIN [$($script:serviceAccountUpn)] FROM WINDOWS" `
-                                -ErrorAction Stop
+                                -EnableException:$true
                             $actualLoginName = $script:serviceAccountUpn
+                            $loginCreated    = $true
                             Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login angelegt (UPN-Format)."
-                        } else {
-                            throw
+                        } catch {
+                            Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): UPN-Format ebenfalls nicht auflösbar – Cross-Domain AD-Lookup schlägt fehl."
+                        }
+                    }
+
+                    # Versuch 3: Zertifikat-basierte Endpoint-Authentifizierung einrichten
+                    if (-not $loginCreated) {
+                        Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): Windows-Login nicht anlegbar. Endpoint wird auf Zertifikat-Authentifizierung umgestellt ..."
+                        try {
+                            _Set-HadrEndpointCertAuth -ActiveNodes $activeNodes -SqlCred $sqlCred -Rtb $Rtb -PrimaryInstance $primaryInstance
+                            # Nach Zertifikat-Setup kein weiteres GRANT LOGIN nötig
+                            continue
+                        } catch {
+                            Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Zertifikat-Setup fehlgeschlagen – $_"
+                            Write-RtfError -Rtb $Rtb -Msg "  MANUELL ERFORDERLICH: CREATE LOGIN + GRANT CONNECT ON ENDPOINT durch AD-Team"
+                            continue
                         }
                     }
                 } else {
@@ -1120,10 +1229,14 @@ CREATE ENDPOINT [HADR_Endpoint]
                     -Query "SELECT name FROM sys.endpoints WHERE type = 4" `
                     -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($epExists) {
-                    Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                        -Query "GRANT CONNECT ON ENDPOINT::[HADR_Endpoint] TO [$actualLoginName]" `
-                        -ErrorAction Stop
-                    Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): CONNECT-Berechtigung gesetzt für '$actualLoginName'."
+                    try {
+                        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
+                            -Query "GRANT CONNECT ON ENDPOINT::[HADR_Endpoint] TO [$actualLoginName]" `
+                            -EnableException:$true
+                        Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): CONNECT-Berechtigung gesetzt für '$actualLoginName'."
+                    } catch {
+                        Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): GRANT CONNECT fehlgeschlagen – $_"
+                    }
                 }
             } catch {
                 Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Fehler in Schritt 4 – $_"
