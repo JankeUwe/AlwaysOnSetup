@@ -2191,6 +2191,17 @@ $propGrid.Add_PropertyValueChanged({
     }
 })
 
+# Form Shown: SplitterDistance beim ersten Anzeigen korrekt setzen (Fenster hat jetzt echte Breite)
+$form.Add_Shown({
+    $w = $split.Width
+    if ($w -gt 0) {
+        $target = [int]($w * 0.35)
+        if ($target -gt $split.Panel1MinSize) {
+            $split.SplitterDistance = $target
+        }
+    }
+})
+
 # Form Resize: SplitterDistance proportional halten (35 % linke Seite)
 $form.Add_Resize({
     $w = $split.Width
