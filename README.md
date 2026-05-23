@@ -65,5 +65,8 @@ PowerShell WinForms-Tool zur vollautomatischen Konfiguration von SQL Server Alwa
 
 ## Mehr Informationen
 
-- Website: [www.powershelldba.de](https://www.powershelldba.de)
-- Entwickler: Uwe Janke, Senior IT-Spezialist / SQL Server DBA
+- **Dokumentation:** [powershelldba.de/tools/alwayson-availability](https://www.powershelldba.de/tools/alwayson-availability)
+- **Website:** [www.powershelldba.de](https://www.powershelldba.de)
+- **PowerShell Gallery:** [powershellgallery.com/profiles/JankeUwe](https://www.powershellgallery.com/profiles/JankeUwe)
+- **Alle Projekte:** [github.com/JankeUwe](https://github.com/JankeUwe)
+- Entwickler: Uwe Janke, Senior SQL Server DBA | dtcSoftware
