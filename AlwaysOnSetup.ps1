@@ -1443,6 +1443,33 @@ REPLICA ON
                 }
             }
 
+            # Failover-Modus auf Secondary explizit setzen (vom Primary aus).
+            # CREATE AVAILABILITY GROUP setzt den Modus in der Definition, aber
+            # beim JOIN kann SQL Server den Modus zuruecksetzen (besonders bei
+            # Zertifikat-Auth oder verzoegerter Endpoint-Verbindung).
+            # MODIFY REPLICA stellt sicher dass Primary UND Secondary denselben
+            # konfigurierten Modus haben.
+            foreach ($sec in $secondaries) {
+                try {
+                    $modifyReplicaSql = "ALTER AVAILABILITY GROUP [$agName] MODIFY REPLICA ON N'$($sec.SqlInstance)' WITH (FAILOVER_MODE = $failMode, AVAILABILITY_MODE = $availMode);"
+                    Write-RtfInfo -Rtb $Rtb -Msg "  $($sec.SqlInstance): Failover-Modus auf '$failMode' setzen ..."
+                    if ($sqlCred) {
+                        $modOut = & sqlcmd -S $primaryInstance -U $sqlCred.UserName `
+                            -P $sqlCred.GetNetworkCredential().Password `
+                            -Q $modifyReplicaSql -b 2>&1
+                    } else {
+                        $modOut = & sqlcmd -S $primaryInstance -E -Q $modifyReplicaSql -b 2>&1
+                    }
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-RtfWarn -Rtb $Rtb -Msg "  $($sec.SqlInstance): MODIFY REPLICA fehlgeschlagen (nicht kritisch) – $($modOut -join ' ')"
+                    } else {
+                        Write-RtfSuccess -Rtb $Rtb -Msg "  $($sec.SqlInstance): Failover-Modus '$failMode' gesetzt."
+                    }
+                } catch {
+                    Write-RtfWarn -Rtb $Rtb -Msg "  $($sec.SqlInstance): MODIFY REPLICA Fehler (nicht kritisch) – $_"
+                }
+            }
+
             Write-RtfSuccess -Rtb $Rtb -Msg "  AG '$agName' erfolgreich erstellt."
         }
     } catch {
