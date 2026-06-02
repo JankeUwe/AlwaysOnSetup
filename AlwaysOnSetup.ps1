@@ -67,6 +67,526 @@ Add-Type -AssemblyName System.DirectoryServices.AccountManagement
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 # ---------------------------------------------------------------------------
+# Sprache und String-Tabelle
+# ---------------------------------------------------------------------------
+$script:CurrentLang = 'DE'
+
+$script:LangStrings = @{
+    DE = @{
+        # Form and Window Titles
+        'FormTitle'                          = 'SQL Server AlwaysOn Setup Tool'
+        'TabConfig'                          = 'Konfiguration'
+
+        # Toolbar Buttons
+        'BtnReload'                          = '🔄  Neu einlesen'
+        'BtnReloadTooltip'                   = 'Cluster- und SQL-Informationen erneut einlesen'
+        'BtnValidate'                        = '✔  Konto prüfen'
+        'BtnValidateTooltip'                 = 'Service-Konto gegen Active Directory prüfen'
+
+        # Panel Labels
+        'LblConfig'                          = 'AlwaysOn-Konfiguration'
+        'LblLog'                             = 'Protokoll'
+
+        # Main Buttons
+        'BtnOK'                              = 'OK  –  Konfiguration starten'
+        'BtnClose'                           = 'Schließen'
+        'BtnContinue'                        = '▶  Weiter'
+        'BtnClearLog'                        = 'Protokoll leeren'
+        'BtnSaveLog'                         = '💾 Protokoll speichern'
+
+        # Status Messages
+        'StatusReady'                        = 'Bereit.'
+        'StatusReadingCluster'               = 'Lese Cluster-Informationen ...'
+        'StatusEntering'                     = 'Eingelesen: {0}  –  OK'
+        'StatusReadError'                    = 'Fehler beim Einlesen – Details im Protokoll.'
+        'StatusADCheck'                      = 'AD-Prüfung: {0} ...'
+        'StatusAccountValid'                 = 'Konto ''{0}'' ist gültig.'
+        'StatusAccountNotFound'              = 'Konto ''{0}'' NICHT gefunden.'
+        'StatusManualLoginRequired'          = 'Bitte SQL-Login anlegen und dann "Weiter" klicken.'
+        'StatusVerifying'                    = 'Verbindung wird geprüft ...'
+        'StatusSQLAuthFailed'                = 'SQL-Login nicht auf allen Nodes erreichbar – bitte prüfen.'
+        'StatusConfigRunning'                = 'Konfiguration läuft ...'
+        'StatusServiceAccountChanged'        = 'Service-Konto geändert – bitte AD-Prüfung ausführen.'
+        'StatusRestartRequired'              = 'Session-Neustart erforderlich!'
+        'StatusModuleError'                  = 'FEHLER: Erforderliche Module nicht verfügbar – Details im Protokoll.'
+
+        # Section Headers (Write-RtfSection)
+        'SectionModuleReqs'                  = 'Modul-Voraussetzungen'
+        'SectionClusterSQL'                  = 'Cluster- und SQL-Informationen einlesen'
+        'SectionManualAction'                = 'Manuelle Aktion erforderlich: SQL-Login anlegen'
+        'SectionMixedMode'                   = 'Mixed-Mode Authentifizierung prüfen'
+        'SectionStep1'                       = 'Schritt 1: SQL-Service-Konto prüfen'
+        'SectionStep2'                       = 'Schritt 2: HADR auf allen Nodes aktivieren'
+        'SectionStep3'                       = 'Schritt 3: Endpoint ''HADR_Endpoint'' (Port {0}) konfigurieren'
+        'SectionStep4'                       = 'Schritt 4: Endpoint CONNECT-Berechtigung setzen'
+        'SectionStep5'                       = 'Schritt 5: Testdatenbank ''{0}'' erstellen'
+        'SectionStep6'                       = 'Schritt 6: Availability Group ''{0}'' erstellen'
+        'SectionStep7'                       = 'Schritt 7: AG-Listener ''{}'' konfigurieren'
+        'SectionStep8'                       = 'Schritt 8: AG-Sync Job anlegen'
+        'SectionStep9'                       = 'Schritt 9: Konfiguration abgeschlossen – Status'
+        'SectionStep10'                      = 'Schritt 10: SPN-Prüfung'
+        'SectionSPNCommands'                 = 'SPN-Befehle – Ausführung durch AD-Team erforderlich'
+        'SectionCleanup'                     = 'Cleanup: Temporäres SQL-Login entfernen'
+
+        # Info Messages
+        'InfoAlreadyLoaded'                  = '[{0}] Bereits geladen (v{1}) – kein Nachladen.'
+        'InfoImportSuccess'                  = '[{0}] Import erfolgreich (v{1}).'
+        'InfoImportFailed'                   = '[{0}] Import fehlgeschlagen: {0}'
+        'InfoNotFound'                       = '[{0}] Nicht gefunden – Installation wird gestartet ...'
+        'InfoInstallSuccess'                 = '[{0}] Installation und Import erfolgreich (v{1}).'
+        'InfoInstallFailed'                  = '[{0}] FEHLER bei Installation: {0}'
+        'InfoFailoverClusterFound'           = '[FailoverClusters] Import erfolgreich.'
+        'InfoFailoverClusterRSAT'            = '[FailoverClusters] RSAT-Feature installiert und Modul geladen.'
+        'InfoINILoaded'                      = 'INI geladen: {0}'
+        'InfoClusterFound'                   = 'Cluster gefunden: {0}'
+        'InfoNodes'                          = 'Nodes: {0}'
+        'InfoListenerPort'                   = '  Listener-Port aus ProbePort gelesen: {0}'
+        'InfoListenerPortNetRes'             = '  Listener-Port aus Netzwerkname-Ressource gelesen: {0}'
+        'InfoListenerInfo'                   = 'Listener-Name: {0}  |  IP: {1}  |  Port: {2}'
+        'InfoNodeService'                    = '{0}  –  Dienst: {1}  |  Konto: {2}  |  AlwaysOn: {3}'
+        'InfoClusterGroups'                  = 'Cluster-Rollen: {0}'
+        'InfoReadComplete'                   = 'Einlesen abgeschlossen.'
+        'InfoWindowsAuthOK'                  = '  Windows-Auth ''{0}'': OK'
+        'InfoAuthSuccess'                    = 'Authentifizierung: Windows-Auth (Kerberos/NTLM) auf allen Nodes OK'
+        'InfoAccountFound'                   = 'Konto gefunden: {0}  ({1})'
+        'InfoADCheckFor'                     = 'AD-Prüfung für Konto ''{0}'' ...'
+        'InfoServicesChanged'                = '  {0}: Konto wird von ''{1}'' auf ''{2}'' geändert ...'
+        'InfoServiceUpdated'                 = '  {0}: Service-Konto erfolgreich aktualisiert.'
+        'InfoHADRActivating'                 = '  {0}: HADR wird aktiviert ...'
+        'InfoSQLReady'                       = '  {0}: Warte auf SQL Server Bereitschaft ...'
+        'InfoHADRActive'                     = '  {0}: HADR aktiviert – SQL Server bereit.'
+        'InfoHADRAlreadyActive'              = '  {0}: HADR bereits aktiv – übersprungen.'
+        'InfoEndpointCreating'               = '  {0}: Endpoint wird erstellt ...'
+        'InfoEndpointExists'                 = '  {0}: Endpoint bereits vorhanden – übersprungen.'
+        'InfoLoginCreating'                  = '  {0}: Login ''{1}'' wird angelegt ...'
+        'InfoLoginExists'                    = '  {0}: Login ''{1}'' bereits vorhanden – übersprungen.'
+        'InfoDomainUserLogin'                = '  {0}: Login angelegt (DOMAIN\User).'
+        'InfoUPNFormat'                      = '  {0}: Versuche UPN-Format ''{1}'' ...'
+        'InfoUPNLoginSuccess'                = '  {0}: Login angelegt (UPN-Format).'
+        'InfoCertAuthSetup'                  = '  {0}: Endpoint wird auf Zertifikat-Authentifizierung umgestellt ...'
+        'InfoConnectGranted'                 = '  {0}: CONNECT-Berechtigung gesetzt für ''{1}''.'
+        'InfoDatabaseCreating'               = '  Datenbank wird angelegt ...'
+        'InfoDatabaseExists'                 = '  Datenbank ''{0}'' bereits vorhanden.'
+        'InfoRecoveryFull'                   = '  Recovery-Modell wird auf FULL gesetzt ...'
+        'InfoRecoveryFullSet'                = '  Recovery-Modell: FULL'
+        'InfoBackupCreating'                 = '  Initiales Full-Backup wird erstellt ...'
+        'InfoBackupSuccess'                  = '  Backup erfolgreich: {0}'
+        'InfoAGCreating'                     = '  AG wird per T-SQL angelegt ...'
+        'InfoSecondaryJoining'               = '  {0}: AG beitreten ...'
+        'InfoFailoverModeSet'                = '  {0}: Failover-Modus auf ''{1}'' setzen ...'
+        'InfoListenerCreating'               = '  Listener wird angelegt ...'
+        'InfoListenerNotVisible'             = '  AG noch nicht sichtbar – warte 10s (Versuch {0}/6) ...'
+        'InfoJobName'                        = '  Job-Name: ''{0}''{1}'
+        'InfoJobUpdate'                      = '  {0}: Job ''{1}'' bereits vorhanden – wird aktualisiert.'
+        'InfoJobSuccess'                     = '  {0}: Job ''{1}'' angelegt (täglich 02:00).'
+        'InfoSPNCheck'                       = '  Prüfe SPNs für Konto: {0}'
+        'InfoSPNFound'                       = '  Gefundene MSSQLSvc-SPNs: {0}'
+        'InfoSPNOK'                          = '  OK  {0}'
+        'InfoAllSPNsValid'                   = '  Alle erwarteten SPNs sind registriert – kein SSPI-Problem zu erwarten.'
+        'InfoTempLoginRemoving'              = '  Temporäres Login ''{0}'' wird entfernt ...'
+        'InfoLogfileSaved'                   = 'Logfile gespeichert: {0}'
+        'InfoClusterSettingsSaved'           = 'Cluster-Settings gesichert: {0}'
+        'InfoADRequestSaved'                 = '  AD-Team Anforderungsdatei gespeichert: {0}'
+        'InfoModuleVersion'                  = '{0} v{1}  – OK'
+        'InfoProcessing'                     = 'Dieser Node ({0}) ist nicht Primary ({1}) - kein Sync nötig.'
+        'InfoSyncTo'                         = 'Sync von {0} nach {1} ...'
+        'InfoMixedModeActive'                = '  {0}: Mixed-Mode bereits aktiv (LoginMode=2) – OK.'
+        'InfoMixedModeActivating'            = '  {0}: Dienst-Neustart (Mixed-Mode Aktivierung) ...'
+        'InfoMixedModeActivated'             = '  {0}: Mixed-Mode aktiviert, SQL Server bereit.'
+        'InfoCertCreating'                   = '  {0}: Erstelle Zertifikat ''{1}'' ...'
+        'InfoCertCreated'                    = '  {0}: Zertifikat erstellt und exportiert nach ''{1}''.'
+        'InfoCertAuthConfigured'             = '  {0}: Endpoint auf Zertifikat-Auth umgestellt.'
+        'InfoCertImported'                   = '  {0}: Zertifikat von ''{1}'' importiert, CONNECT gesetzt.'
+        'InfoCertAuthComplete'               = '  Zertifikat-basierte Endpoint-Authentifizierung auf allen Nodes konfiguriert.'
+        'InfoConfigStarting'                 = 'Konfiguration startet  –  Primary: {0}'
+        'InfoLoginOnAllNodes'                = '  Bitte auf ALLEN Nodes folgendes T-SQL als sysadmin ausführen:'
+        'InfoLoginManually'                  = '  (z.B. per SSMS lokal auf dem jeweiligen Node oder per RDP)'
+        'InfoLoginContinueAfter'             = '  Nach Ausführung auf allen Nodes: Klick auf ''Weiter'' um fortzufahren.'
+        'InfoLoginCredentials'               = '  Login: {0}   Passwort: {1}'
+        'InfoUnableToCreate'                 = '  Weder Install-WindowsFeature noch Add-WindowsCapability verfügbar.'
+        'InfoAGStatusOK'                     = 'AG ''{0}''  |  Sync: {1}  |  Primary: {2}'
+        'InfoReplicaStatus'                  = '  Replica: {0}  |  Rolle: {1}  |  Sync: {2}'
+        'InfoFinished'                       = 'Fertig.'
+        'InfoSQLAuthSuccess'                 = '  SQL-Auth ''{0}'': OK'
+        'InfoSQLAuthOnAllSuccess'            = '  SQL-Auth auf allen Nodes erfolgreich – Konfiguration wird fortgesetzt.'
+        'InfoNodesToChange'                  = '  Folgende Nodes sind per Windows-Auth (Kerberos) nicht erreichbar:'
+        'InfoEmptyLine'                      = ''
+        'InfoUPNConverted'                   = '  UPN ''{0}'' konvertiert: ''{1}'' (NetBIOS: {2})'
+        'InfoNoAccountChange'                = '  Service-Konto ''{0}'' entspricht dem bereits eingetragenen Konto – kein Update erforderlich.'
+        'InfoDomainUserNotResolvable'        = '  {0}: DOMAIN\User nicht auflösbar (''{1}'')'
+        'InfoUPNNotResolvable'               = '  {0}: UPN-Format ebenfalls nicht auflösbar – Cross-Domain AD-Lookup schlägt fehl.'
+        'InfoRegistryCleanupSuccess'         = '  Registry HadrAgNameToldMap auf ''{0}'' bereinigt.'
+        'InfoAgStatus'                       = 'AG ''{0}'' auf Primary angelegt.'
+        'InfoSecondarySynced'                = '  {0}: Beigetreten, Autoseed genehmigt.'
+        'InfoListenerExists'                 = '  Listener bereits vorhanden – übersprungen.'
+
+        # Warning Messages
+        'WarnClusterNotReachable'            = 'Cluster nicht erreichbar: {0}'
+        'WarnNodesReadFailed'                = 'Nodes konnten nicht gelesen werden: {0}'
+        'WarnListenerIncomplete'             = 'Listener-Informationen unvollständig: {0}'
+        'WarnListenerPortFallback'           = '  Listener-Port nicht im Cluster hinterlegt – Fallback: {0}'
+        'WarnNoSQLService'                   = '{0}: Kein SQL-Engine-Dienst gefunden'
+        'WarnSQLInfoReadFailed'              = '{0}: SQL-Info nicht lesbar – {0}'
+        'WarnClusterSettingsFailed'          = 'Cluster-Settings konnten nicht gesichert werden: {0}'
+        'WarnListenerListFailed'             = 'Listener-Informationen unvollständig: {0}'
+        'WarnNetBIOSUnresolvable'            = '  NetBIOS-Name nicht ermittelbar – Fallback: ''{0}'' (aus UPN-Suffix, möglicherweise falsch)'
+        'WarnMixedModeNotActive'             = '  {0}: Mixed-Mode nicht aktiv (LoginMode={1}) – wird aktiviert ...'
+        'WarnMixedModeCheckFailed'           = '  {0}: Mixed-Mode-Prüfung fehlgeschlagen – {0}'
+        'WarnMixedModeManual'                = '  {0}: Bitte Mixed-Mode manuell aktivieren: Server Properties → Security → SQL Server and Windows Authentication mode'
+        'WarnNoServiceAccount'               = '  Kein Service-Konto angegeben – Schritt übersprungen.'
+        'WarnPasswordMissing'                = '  Neues Konto ''{0}'' angegeben, aber kein Passwort – Schritt übersprungen.'
+        'WarnOrphanedGroup'                  = '  Verwaiste WSFC-Gruppe ''{0}'' gefunden – wird bereinigt ...'
+        'WarnGroupCleanupFailed'             = '  WSFC-Gruppe konnte nicht gelöscht werden: {0}'
+        'WarnRegistryCleanupFailed'          = '  Registry auf ''{0}'' nicht bereinigt: {0}'
+        'WarnAGExists'                       = '  AG ''{0}'' bereits vorhanden – Schritt übersprungen.'
+        'WarnModifyReplicaFailed'            = '  {0}: MODIFY REPLICA fehlgeschlagen (nicht kritisch) – {0}'
+        'WarnModifyReplicaError'             = '  {0}: MODIFY REPLICA Fehler (nicht kritisch) – {0}'
+        'WarnListenerIPMissing'              = '  Listener-IP oder -Port fehlen – übersprungen.'
+        'WarnAGNotVisible'                   = '  AG nach 60s noch nicht sichtbar – Listener-Schritt übersprungen.'
+        'WarnStatusQueryFailed'              = 'Status-Abfrage fehlgeschlagen – {0}'
+        'WarnSecondsNotSpelling'             = '  {0}: AG beitreten ...'
+        'WarnNoServiceAccountKnown'          = '  Kein Dienstkonto bekannt – SPN-Prüfung übersprungen.'
+        'WarnSPNMissing'                     = '  FEHLT  {0}'
+        'WarnSPNCount'                       = '  {0} SPN(s) fehlen. Ohne korrekte SPNs schlägt die'
+        'WarnSPNAuth'                        = '  Windows-Authentifizierung mit SSPI-Kontextfehler fehl.'
+        'WarnAdTeamExecution'                = '  Folgende Befehle müssen durch einen Domänen-Admin ausgeführt werden:'
+        'WarnAGSeeding'                      = 'AG-Status noch nicht abfragbar – Seeding läuft möglicherweise noch.'
+        'WarnConfirmPassword'                = "Das Service-Konto wurde auf ''{0}'' geändert,`naber es wurde kein Passwort eingegeben. Trotzdem fortfahren?"
+        'WarnLoginRemovedFailed'             = '    ''{0}'': Login konnte nicht entfernt werden – bitte manuell prüfen: {0}'
+        'WarnModuleRestartNeeded'            = 'Ein oder mehrere Module wurden neu installiert.`nDie aktuelle PowerShell-Session muss neu gestartet werden,`ndamit alle Module korrekt geladen werden.`n`nBitte das Skript nach dem Neustart erneut ausführen.'
+        'WarnAccountValidationFailed'        = 'Service-Konto geändert auf ''{0}'' – AD-Prüfung empfohlen.'
+        'WarnNodesToImprovement'             = '  Folgende Nodes sind per Windows-Auth (Kerberos) nicht erreichbar:'
+        'WarnWindowsAuthFailed'              = '  Windows-Auth ''{0}'': fehlgeschlagen – {0}'
+        'WarnSecondarySecondJoin'            = '  {0}: Beitritt fehlgeschlagen – {0}'
+        'WarnSQLAuthFailedNode'              = '  SQL-Auth ''{0}'': fehlgeschlagen – {0}'
+        'WarnLoginRetry'                     = '  Bitte Login prüfen und erneut auf ''Weiter'' klicken.'
+        'WarnSetupComplete'                  = 'Nach Ausführung auf allen Nodes: Klick auf ''Weiter'' um fortzufahren.'
+        'WarnLognotWritable'                 = 'Logfile konnte nicht geschrieben werden: {0}'
+
+        # Error Messages
+        'ErrorClusterUnreachable'            = 'Cluster nicht erreichbar: {0}'
+        'ErrorAccountNotInAD'                = 'Konto nicht im AD gefunden.'
+        'ErrorADCheckFailed'                 = 'AD-Prüfung fehlgeschlagen: {0}'
+        'ErrorWMIChange'                     = '  {0}: WMI Change() ReturnValue={1}'
+        'ErrorAccountUpdateFailed'           = '  {0}: Fehler beim Konto-Update – {0}'
+        'ErrorHADRFailed'                    = '  {0}: HADR-Aktivierung fehlgeschlagen – {0}'
+        'ErrorSQLNotReady'                   = '  {0}: SQL Server nach 2 Minuten noch nicht erreichbar.'
+        'ErrorEndpointFailed'                = '  {0}: Endpoint-Fehler – {0}'
+        'ErrorStep4Failed'                   = '  {0}: Fehler in Schritt 4 – {0}'
+        'ErrorDatabaseFailed'                = '  Datenbankvorb. fehlgeschlagen – {0}'
+        'ErrorAGCreationFailed'              = '  AG-Erstellung fehlgeschlagen – {0}'
+        'ErrorListenerFailed'                = '  Listener-Konfiguration fehlgeschlagen – {0}'
+        'ErrorJobFailed'                     = '  AG-Sync Job fehlgeschlagen – {0}'
+        'ErrorJobCreationFailed'             = '  {0}: Job-Anlage fehlgeschlagen – {0}'
+        'ErrorSPNCheckFailed'                = '  SPN-Prüfung fehlgeschlagen: {0}'
+        'ErrorADTeamFileFailed'              = '  AD-Team Datei konnte nicht geschrieben werden: {0}'
+        'ErrorCertAuthFailed'                = '  {0}: Zertifikat-Setup fehlgeschlagen – {0}'
+        'ErrorManualRequired'                = '  MANUELL ERFORDERLICH: CREATE LOGIN + GRANT CONNECT ON ENDPOINT durch AD-Team'
+        'ErrorConfigStep1'                   = '  {0}: Fehler beim Konto-Update – {0}'
+        'ErrorStep4General'                  = '  {0}: Fehler in Schritt 4 – {0}'
+        'ErrorListenerCreationFailed'        = '  Listener-Anlage fehlgeschlagen: {0}'
+
+        # Dialog/MessageBox Titles
+        'MsgTitleAccountCheck'               = 'Konto prüfen'
+        'MsgTitleError'                      = 'Fehler'
+        'MsgTitleConfirm'                    = 'Bestätigung'
+        'MsgTitleADCheck'                    = 'AD-Prüfung'
+        'MsgTitlePasswordMissing'            = 'Passwort fehlt'
+        'MsgTitleModuleInstallFailed'        = 'Modul-Installation fehlgeschlagen'
+        'MsgTitleRestartRequired'            = 'Neustart erforderlich'
+
+        # Dialog/MessageBox Content
+        'MsgNoAccount'                       = 'Bitte zuerst ein Service-Konto im PropertyGrid eingeben.'
+        'MsgAccountFound'                    = "Konto gefunden:`nAnzeigename: {0}`nUPN: {1}"
+        'MsgAccountNotFound'                 = "Konto nicht gefunden:`n{0}"
+        'MsgAGNameRequired'                  = 'Bitte einen AG-Namen eingeben.'
+        'MsgConfigStarting'                  = "AlwaysOn-Konfiguration wird gestartet:`n`n" +
+                                              "  AG-Name    : {0}`n" +
+                                              "  Primary    : {1}`n" +
+                                              "  Endpoint   : Port {2}`n" +
+                                              "  Failover   : {3}`n" +
+                                              "  Datenbank  : {4}`n" +
+                                              "{5}`n`n" +
+                                              'Jetzt ausführen?'
+        'MsgAccountChangeInfo'               = '  Konto      : ÄNDERUNG  ''{0}''  →  ''{1}'''
+        'MsgAccountNoChange'                 = '  Konto      : unverändert ({0})'
+    }
+
+    EN = @{
+        # Form and Window Titles
+        'FormTitle'                          = 'SQL Server AlwaysOn Setup Tool'
+        'TabConfig'                          = 'Configuration'
+
+        # Toolbar Buttons
+        'BtnReload'                          = '🔄  Reload'
+        'BtnReloadTooltip'                   = 'Re-read cluster and SQL information'
+        'BtnValidate'                        = '✔  Validate Account'
+        'BtnValidateTooltip'                 = 'Validate service account against Active Directory'
+
+        # Panel Labels
+        'LblConfig'                          = 'AlwaysOn Configuration'
+        'LblLog'                             = 'Log'
+
+        # Main Buttons
+        'BtnOK'                              = 'OK  –  Start Configuration'
+        'BtnClose'                           = 'Close'
+        'BtnContinue'                        = '▶  Continue'
+        'BtnClearLog'                        = 'Clear Log'
+        'BtnSaveLog'                         = '💾 Save Log'
+
+        # Status Messages
+        'StatusReady'                        = 'Ready.'
+        'StatusReadingCluster'               = 'Reading cluster information ...'
+        'StatusEntering'                     = 'Read: {0}  –  OK'
+        'StatusReadError'                    = 'Error reading configuration – see log for details.'
+        'StatusADCheck'                      = 'AD check: {0} ...'
+        'StatusAccountValid'                 = 'Account ''{0}'' is valid.'
+        'StatusAccountNotFound'              = 'Account ''{0}'' NOT found.'
+        'StatusManualLoginRequired'          = 'Please create SQL login and then click "Continue".'
+        'StatusVerifying'                    = 'Verifying connection ...'
+        'StatusSQLAuthFailed'                = 'SQL login not accessible on all nodes – please check.'
+        'StatusConfigRunning'                = 'Configuration running ...'
+        'StatusServiceAccountChanged'        = 'Service account changed – AD validation recommended.'
+        'StatusRestartRequired'              = 'Session restart required!'
+        'StatusModuleError'                  = 'ERROR: Required modules unavailable – see log for details.'
+
+        # Section Headers (Write-RtfSection)
+        'SectionModuleReqs'                  = 'Module Requirements'
+        'SectionClusterSQL'                  = 'Reading cluster and SQL information'
+        'SectionManualAction'                = 'Manual action required: Create SQL login'
+        'SectionMixedMode'                   = 'Checking Mixed-Mode authentication'
+        'SectionStep1'                       = 'Step 1: Validate SQL service account'
+        'SectionStep2'                       = 'Step 2: Activate HADR on all nodes'
+        'SectionStep3'                       = 'Step 3: Configure endpoint ''HADR_Endpoint'' (Port {0})'
+        'SectionStep4'                       = 'Step 4: Set endpoint CONNECT permission'
+        'SectionStep5'                       = 'Step 5: Create test database ''{0}'''
+        'SectionStep6'                       = 'Step 6: Create Availability Group ''{0}'''
+        'SectionStep7'                       = 'Step 7: Configure AG listener ''{}'''
+        'SectionStep8'                       = 'Step 8: Create AG sync job'
+        'SectionStep9'                       = 'Step 9: Configuration complete – Status'
+        'SectionStep10'                      = 'Step 10: SPN validation'
+        'SectionSPNCommands'                 = 'SPN commands – execution required by AD team'
+        'SectionCleanup'                     = 'Cleanup: Remove temporary SQL login'
+
+        # Info Messages
+        'InfoAlreadyLoaded'                  = '[{0}] Already loaded (v{1}) – no reload.'
+        'InfoImportSuccess'                  = '[{0}] Import successful (v{1}).'
+        'InfoImportFailed'                   = '[{0}] Import failed: {0}'
+        'InfoNotFound'                       = '[{0}] Not found – starting installation ...'
+        'InfoInstallSuccess'                 = '[{0}] Installation and import successful (v{1}).'
+        'InfoInstallFailed'                  = '[{0}] ERROR during installation: {0}'
+        'InfoFailoverClusterFound'           = '[FailoverClusters] Import successful.'
+        'InfoFailoverClusterRSAT'            = '[FailoverClusters] RSAT feature installed and module loaded.'
+        'InfoINILoaded'                      = 'INI loaded: {0}'
+        'InfoClusterFound'                   = 'Cluster found: {0}'
+        'InfoNodes'                          = 'Nodes: {0}'
+        'InfoListenerPort'                   = '  Listener port from ProbePort: {0}'
+        'InfoListenerPortNetRes'             = '  Listener port from network name resource: {0}'
+        'InfoListenerInfo'                   = 'Listener name: {0}  |  IP: {1}  |  Port: {2}'
+        'InfoNodeService'                    = '{0}  –  Service: {1}  |  Account: {2}  |  AlwaysOn: {3}'
+        'InfoClusterGroups'                  = 'Cluster roles: {0}'
+        'InfoReadComplete'                   = 'Read complete.'
+        'InfoWindowsAuthOK'                  = '  Windows auth ''{0}'': OK'
+        'InfoAuthSuccess'                    = 'Authentication: Windows auth (Kerberos/NTLM) on all nodes OK'
+        'InfoAccountFound'                   = 'Account found: {0}  ({1})'
+        'InfoADCheckFor'                     = 'AD check for account ''{0}'' ...'
+        'InfoServicesChanged'                = '  {0}: Changing account from ''{1}'' to ''{2}'' ...'
+        'InfoServiceUpdated'                 = '  {0}: Service account updated successfully.'
+        'InfoHADRActivating'                 = '  {0}: Activating HADR ...'
+        'InfoSQLReady'                       = '  {0}: Waiting for SQL Server readiness ...'
+        'InfoHADRActive'                     = '  {0}: HADR activated – SQL Server ready.'
+        'InfoHADRAlreadyActive'              = '  {0}: HADR already active – skipped.'
+        'InfoEndpointCreating'               = '  {0}: Creating endpoint ...'
+        'InfoEndpointExists'                 = '  {0}: Endpoint already exists – skipped.'
+        'InfoLoginCreating'                  = '  {0}: Creating login ''{1}'' ...'
+        'InfoLoginExists'                    = '  {0}: Login ''{1}'' already exists – skipped.'
+        'InfoDomainUserLogin'                = '  {0}: Login created (DOMAIN\User).'
+        'InfoUPNFormat'                      = '  {0}: Trying UPN format ''{1}'' ...'
+        'InfoUPNLoginSuccess'                = '  {0}: Login created (UPN format).'
+        'InfoCertAuthSetup'                  = '  {0}: Switching endpoint to certificate authentication ...'
+        'InfoConnectGranted'                 = '  {0}: CONNECT permission set for ''{1}''.'
+        'InfoDatabaseCreating'               = '  Creating database ...'
+        'InfoDatabaseExists'                 = '  Database ''{0}'' already exists.'
+        'InfoRecoveryFull'                   = '  Setting recovery model to FULL ...'
+        'InfoRecoveryFullSet'                = '  Recovery model: FULL'
+        'InfoBackupCreating'                 = '  Creating initial full backup ...'
+        'InfoBackupSuccess'                  = '  Backup successful: {0}'
+        'InfoAGCreating'                     = '  Creating AG via T-SQL ...'
+        'InfoSecondaryJoining'               = '  {0}: Joining AG ...'
+        'InfoFailoverModeSet'                = '  {0}: Setting failover mode to ''{1}'' ...'
+        'InfoListenerCreating'               = '  Creating listener ...'
+        'InfoListenerNotVisible'             = '  AG not yet visible – waiting 10s (attempt {0}/6) ...'
+        'InfoJobName'                        = '  Job name: ''{0}''{1}'
+        'InfoJobUpdate'                      = '  {0}: Job ''{1}'' already exists – updating.'
+        'InfoJobSuccess'                     = '  {0}: Job ''{1}'' created (daily at 02:00).'
+        'InfoSPNCheck'                       = '  Checking SPNs for account: {0}'
+        'InfoSPNFound'                       = '  Found MSSQLSvc SPNs: {0}'
+        'InfoSPNOK'                          = '  OK  {0}'
+        'InfoAllSPNsValid'                   = '  All expected SPNs registered – no SSPI issues expected.'
+        'InfoTempLoginRemoving'              = '  Removing temporary login ''{0}'' ...'
+        'InfoLogfileSaved'                   = 'Log saved: {0}'
+        'InfoClusterSettingsSaved'           = 'Cluster settings backed up: {0}'
+        'InfoADRequestSaved'                 = '  AD team request file saved: {0}'
+        'InfoModuleVersion'                  = '{0} v{1}  – OK'
+        'InfoProcessing'                     = 'This node ({0}) is not primary ({1}) - no sync needed.'
+        'InfoSyncTo'                         = 'Syncing from {0} to {1} ...'
+        'InfoMixedModeActive'                = '  {0}: Mixed-Mode already active (LoginMode=2) – OK.'
+        'InfoMixedModeActivating'            = '  {0}: Restarting service (Mixed-Mode activation) ...'
+        'InfoMixedModeActivated'             = '  {0}: Mixed-Mode activated, SQL Server ready.'
+        'InfoCertCreating'                   = '  {0}: Creating certificate ''{1}'' ...'
+        'InfoCertCreated'                    = '  {0}: Certificate created and exported to ''{1}''.'
+        'InfoCertAuthConfigured'             = '  {0}: Endpoint switched to certificate auth.'
+        'InfoCertImported'                   = '  {0}: Certificate from ''{1}'' imported, CONNECT set.'
+        'InfoCertAuthComplete'               = '  Certificate-based endpoint authentication configured on all nodes.'
+        'InfoConfigStarting'                 = 'Configuration starting  –  Primary: {0}'
+        'InfoLoginOnAllNodes'                = '  Please execute the following T-SQL as sysadmin on ALL nodes:'
+        'InfoLoginManually'                  = '  (e.g. via SSMS locally on the respective node or via RDP)'
+        'InfoLoginContinueAfter'             = '  After execution on all nodes: Click ''Continue'' to proceed.'
+        'InfoLoginCredentials'               = '  Login: {0}   Password: {1}'
+        'InfoUnableToCreate'                 = '  Neither Install-WindowsFeature nor Add-WindowsCapability available.'
+        'InfoAGStatusOK'                     = 'AG ''{0}''  |  Sync: {1}  |  Primary: {2}'
+        'InfoReplicaStatus'                  = '  Replica: {0}  |  Role: {1}  |  Sync: {2}'
+        'InfoFinished'                       = 'Complete.'
+        'InfoSQLAuthSuccess'                 = '  SQL auth ''{0}'': OK'
+        'InfoSQLAuthOnAllSuccess'            = '  SQL auth on all nodes successful – configuration continuing.'
+        'InfoNodesToChange'                  = '  The following nodes are not accessible via Windows auth (Kerberos):'
+        'InfoEmptyLine'                      = ''
+        'InfoUPNConverted'                   = '  UPN ''{0}'' converted: ''{1}'' (NetBIOS: {2})'
+        'InfoNoAccountChange'                = '  Service account ''{0}'' matches the existing account – no update needed.'
+        'InfoDomainUserNotResolvable'        = '  {0}: DOMAIN\User not resolvable (''{1}'')'
+        'InfoUPNNotResolvable'               = '  {0}: UPN format also not resolvable – cross-domain AD lookup failed.'
+        'InfoRegistryCleanupSuccess'         = '  Registry HadrAgNameToldMap cleaned on ''{0}''.'
+        'InfoAgStatus'                       = 'AG ''{0}'' created on primary.'
+        'InfoSecondarySynced'                = '  {0}: Joined, autoseed approved.'
+        'InfoListenerExists'                 = '  Listener already exists – skipped.'
+
+        # Warning Messages
+        'WarnClusterNotReachable'            = 'Cluster not reachable: {0}'
+        'WarnNodesReadFailed'                = 'Could not read nodes: {0}'
+        'WarnListenerIncomplete'             = 'Listener information incomplete: {0}'
+        'WarnListenerPortFallback'           = '  Listener port not in cluster – fallback: {0}'
+        'WarnNoSQLService'                   = '{0}: No SQL Engine service found'
+        'WarnSQLInfoReadFailed'              = '{0}: Could not read SQL info – {0}'
+        'WarnClusterSettingsFailed'          = 'Could not back up cluster settings: {0}'
+        'WarnListenerListFailed'             = 'Listener information incomplete: {0}'
+        'WarnNetBIOSUnresolvable'            = '  NetBIOS name not resolvable – fallback: ''{0}'' (from UPN suffix, may be incorrect)'
+        'WarnMixedModeNotActive'             = '  {0}: Mixed-Mode not active (LoginMode={1}) – activating ...'
+        'WarnMixedModeCheckFailed'           = '  {0}: Mixed-Mode check failed – {0}'
+        'WarnMixedModeManual'                = '  {0}: Please manually activate Mixed-Mode: Server Properties → Security → SQL Server and Windows Authentication mode'
+        'WarnNoServiceAccount'               = '  No service account specified – step skipped.'
+        'WarnPasswordMissing'                = '  New account ''{0}'' specified, but no password – step skipped.'
+        'WarnOrphanedGroup'                  = '  Orphaned WSFC group ''{0}'' found – cleaning up ...'
+        'WarnGroupCleanupFailed'             = '  Could not delete WSFC group: {0}'
+        'WarnRegistryCleanupFailed'          = '  Registry not cleaned on ''{0}'': {0}'
+        'WarnAGExists'                       = '  AG ''{0}'' already exists – step skipped.'
+        'WarnModifyReplicaFailed'            = '  {0}: MODIFY REPLICA failed (not critical) – {0}'
+        'WarnModifyReplicaError'             = '  {0}: MODIFY REPLICA error (not critical) – {0}'
+        'WarnListenerIPMissing'              = '  Listener IP or port missing – skipped.'
+        'WarnAGNotVisible'                   = '  AG not visible after 60s – listener step skipped.'
+        'WarnStatusQueryFailed'              = 'Status query failed – {0}'
+        'WarnSecondsNotSpelling'             = '  {0}: Joining AG ...'
+        'WarnNoServiceAccountKnown'          = '  No service account known – SPN check skipped.'
+        'WarnSPNMissing'                     = '  MISSING  {0}'
+        'WarnSPNCount'                       = '  {0} SPN(s) missing. Without correct SPNs,'
+        'WarnSPNAuth'                        = '  Windows authentication fails with SSPI context error.'
+        'WarnAdTeamExecution'                = '  The following commands must be executed by a domain admin:'
+        'WarnAGSeeding'                      = 'AG status not yet queryable – seeding may still be in progress.'
+        'WarnConfirmPassword'                = "Service account changed to ''{0}''`nbut no password entered. Continue anyway?"
+        'WarnLoginRemovedFailed'             = '    ''{0}'': Could not remove login – please check manually: {0}'
+        'WarnModuleRestartNeeded'            = 'One or more modules were newly installed.`nThe current PowerShell session must be restarted`nfor all modules to load correctly.`n`nPlease run the script again after restart.'
+        'WarnAccountValidationFailed'        = 'Service account changed to ''{0}'' – AD validation recommended.'
+        'WarnNodesToImprovement'             = '  The following nodes are not accessible via Windows auth (Kerberos):'
+        'WarnWindowsAuthFailed'              = '  Windows auth ''{0}'': failed – {0}'
+        'WarnSecondarySecondJoin'            = '  {0}: Join failed – {0}'
+        'WarnSQLAuthFailedNode'              = '  SQL auth ''{0}'': failed – {0}'
+        'WarnLoginRetry'                     = '  Please check login and click ''Continue'' again.'
+        'WarnSetupComplete'                  = 'After execution on all nodes: Click ''Continue'' to proceed.'
+        'WarnLognotWritable'                 = 'Could not write log file: {0}'
+
+        # Error Messages
+        'ErrorClusterUnreachable'            = 'Cluster not reachable: {0}'
+        'ErrorAccountNotInAD'                = 'Account not found in AD.'
+        'ErrorADCheckFailed'                 = 'AD check failed: {0}'
+        'ErrorWMIChange'                     = '  {0}: WMI Change() ReturnValue={1}'
+        'ErrorAccountUpdateFailed'           = '  {0}: Error updating account – {0}'
+        'ErrorHADRFailed'                    = '  {0}: HADR activation failed – {0}'
+        'ErrorSQLNotReady'                   = '  {0}: SQL Server not reachable after 2 minutes.'
+        'ErrorEndpointFailed'                = '  {0}: Endpoint error – {0}'
+        'ErrorStep4Failed'                   = '  {0}: Error in step 4 – {0}'
+        'ErrorDatabaseFailed'                = '  Database preparation failed – {0}'
+        'ErrorAGCreationFailed'              = '  AG creation failed – {0}'
+        'ErrorListenerFailed'                = '  Listener configuration failed – {0}'
+        'ErrorJobFailed'                     = '  AG sync job failed – {0}'
+        'ErrorJobCreationFailed'             = '  {0}: Job creation failed – {0}'
+        'ErrorSPNCheckFailed'                = '  SPN check failed: {0}'
+        'ErrorADTeamFileFailed'              = '  Could not write AD team file: {0}'
+        'ErrorCertAuthFailed'                = '  {0}: Certificate setup failed – {0}'
+        'ErrorManualRequired'                = '  MANUAL REQUIRED: CREATE LOGIN + GRANT CONNECT ON ENDPOINT by AD team'
+        'ErrorConfigStep1'                   = '  {0}: Error updating account – {0}'
+        'ErrorStep4General'                  = '  {0}: Error in step 4 – {0}'
+        'ErrorListenerCreationFailed'        = '  Listener creation failed: {0}'
+
+        # Dialog/MessageBox Titles
+        'MsgTitleAccountCheck'               = 'Check Account'
+        'MsgTitleError'                      = 'Error'
+        'MsgTitleConfirm'                    = 'Confirmation'
+        'MsgTitleADCheck'                    = 'AD Check'
+        'MsgTitlePasswordMissing'            = 'Password Missing'
+        'MsgTitleModuleInstallFailed'        = 'Module Installation Failed'
+        'MsgTitleRestartRequired'            = 'Restart Required'
+
+        # Dialog/MessageBox Content
+        'MsgNoAccount'                       = 'Please first enter a service account in the PropertyGrid.'
+        'MsgAccountFound'                    = "Account found:`nDisplay name: {0}`nUPN: {1}"
+        'MsgAccountNotFound'                 = "Account not found:`n{0}"
+        'MsgAGNameRequired'                  = 'Please enter an AG name.'
+        'MsgConfigStarting'                  = "AlwaysOn configuration starting:`n`n" +
+                                              "  AG name     : {0}`n" +
+                                              "  Primary     : {1}`n" +
+                                              "  Endpoint    : Port {2}`n" +
+                                              "  Failover    : {3}`n" +
+                                              "  Database    : {4}`n" +
+                                              "{5}`n`n" +
+                                              'Run now?'
+        'MsgAccountChangeInfo'               = '  Account    : CHANGE  ''{0}''  →  ''{1}'''
+        'MsgAccountNoChange'                 = '  Account    : unchanged ({0})'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Helper function for string translation
+# ---------------------------------------------------------------------------
+function T {
+    param([string]$Key, [object[]]$f)
+    $s = $script:LangStrings[$script:CurrentLang][$Key]
+    if (-not $s) { return "[$Key]" }
+    if ($f)      { return $s -f $f }
+    return $s
+}
+
+# ---------------------------------------------------------------------------
+# Update all UI control labels based on current language
+# ---------------------------------------------------------------------------
+function Update-UILanguage {
+    $form.Text              = T 'FormTitle'
+    $tabKonfig.Text         = T 'TabConfig'
+    $tsBtnLoad.Text         = T 'BtnReload'
+    $tsBtnLoad.ToolTipText  = T 'BtnReloadTooltip'
+    $tsBtnValidate.Text     = T 'BtnValidate'
+    $tsBtnValidate.ToolTipText = T 'BtnValidateTooltip'
+    if ($tsBtnLang) {
+        $tsBtnLang.Text     = if ($script:CurrentLang -eq 'DE') { '🌐 EN' } else { '🌐 DE' }
+    }
+    $lblGrid.Text           = T 'LblConfig'
+    $lblLog.Text            = T 'LblLog'
+    $btnOK.Text             = T 'BtnOK'
+    $btnClose.Text          = T 'BtnClose'
+    $btnContinue.Text       = T 'BtnContinue'
+    $btnClearLog.Text       = T 'BtnClearLog'
+    $btnSaveLog.Text        = T 'BtnSaveLog'
+}
+
+# ---------------------------------------------------------------------------
 # Modul-Voraussetzungen prüfen und ggf. automatisch installieren
 # ---------------------------------------------------------------------------
 function Install-RequiredModule {
@@ -78,7 +598,7 @@ function Install-RequiredModule {
     # Bereits in dieser Session geladen → sofort zurück, kein Import
     if (Get-Module -Name $ModuleName -ErrorAction SilentlyContinue) {
         $ver = (Get-Module -Name $ModuleName).Version
-        Write-Host "[$ModuleName] Bereits geladen (v$ver) – kein Nachladen."
+        Write-Host (T 'InfoAlreadyLoaded' -f $ModuleName, $ver)
         return $true
     }
 
@@ -88,15 +608,15 @@ function Install-RequiredModule {
     if ($available) {
         try {
             Import-Module -Name $ModuleName -Force -ErrorAction Stop
-            Write-Host "[$ModuleName] Import erfolgreich (v$($available.Version))."
+            Write-Host (T 'InfoImportSuccess' -f $ModuleName, $available.Version)
             return $true
         } catch {
-            Write-Host "[$ModuleName] Import fehlgeschlagen: $_"
+            Write-Host (T 'InfoImportFailed' -f $ModuleName, $_)
         }
     }
 
     # Nicht vorhanden – Installation versuchen
-    Write-Host "[$ModuleName] Nicht gefunden – Installation wird gestartet ..."
+    Write-Host (T 'InfoNotFound' -f $ModuleName)
     try {
         if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
             Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
@@ -104,10 +624,10 @@ function Install-RequiredModule {
         Invoke-Expression $InstallCommand | Out-Null
         Import-Module -Name $ModuleName -Force -ErrorAction Stop
         $ver = (Get-Module -Name $ModuleName).Version
-        Write-Host "[$ModuleName] Installation und Import erfolgreich (v$ver)."
+        Write-Host (T 'InfoInstallSuccess' -f $ModuleName, $ver)
         return $true
     } catch {
-        Write-Host "[$ModuleName] FEHLER bei Installation: $_"
+        Write-Host (T 'InfoInstallFailed' -f $ModuleName, $_)
         return $false
     }
 }
@@ -120,12 +640,12 @@ function Install-FailoverClustersModule {
     if ($available) {
         try {
             Import-Module -Name FailoverClusters -Force -ErrorAction Stop
-            Write-Host "[FailoverClusters] Import erfolgreich."
+            Write-Host (T 'InfoFailoverClusterFound')
             return $true
         } catch { }
     }
 
-    Write-Host "[FailoverClusters] Nicht gefunden – RSAT-Feature wird installiert ..."
+    Write-Host (T 'InfoNotFound' -f 'FailoverClusters')
     try {
         # Windows Server: Install-WindowsFeature
         if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
@@ -136,14 +656,14 @@ function Install-FailoverClustersModule {
             Add-WindowsCapability -Online -Name 'Rsat.FailoverCluster.Management.Tools~~~~0.0.1.0' -ErrorAction Stop | Out-Null
         }
         else {
-            throw 'Weder Install-WindowsFeature noch Add-WindowsCapability verfügbar.'
+            throw (T 'InfoUnableToCreate')
         }
 
         Import-Module -Name FailoverClusters -Force -ErrorAction Stop
-        Write-Host "[FailoverClusters] RSAT-Feature installiert und Modul geladen."
+        Write-Host (T 'InfoFailoverClusterRSAT')
         return $true
     } catch {
-        Write-Host "[FailoverClusters] FEHLER bei Installation: $_"
+        Write-Host "FailoverClusters FEHLER bei Installation: $_"
         return $false
     }
 }
@@ -202,7 +722,7 @@ if (Test-Path $iniFile) {
             $script:iniConfig[$key] = $value
         }
     }
-    Write-Host "INI geladen: $iniFile"
+    Write-Host (T 'InfoINILoaded' -f $iniFile)
 }
 
 # ---------------------------------------------------------------------------
@@ -1871,16 +2391,18 @@ $toolStrip = New-Object System.Windows.Forms.ToolStrip
 $toolStrip.Dock = 'Top'
 
 $tsBtnLoad = New-Object System.Windows.Forms.ToolStripButton
-$tsBtnLoad.Text        = '🔄  Neu einlesen'
-$tsBtnLoad.ToolTipText = 'Cluster- und SQL-Informationen erneut einlesen'
 $toolStrip.Items.Add($tsBtnLoad) | Out-Null
 
 $toolStrip.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 
 $tsBtnValidate = New-Object System.Windows.Forms.ToolStripButton
-$tsBtnValidate.Text        = '✔  Konto prüfen'
-$tsBtnValidate.ToolTipText = 'Service-Konto gegen Active Directory prüfen'
 $toolStrip.Items.Add($tsBtnValidate) | Out-Null
+
+$toolStrip.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+
+$tsBtnLang = New-Object System.Windows.Forms.ToolStripButton
+$tsBtnLang.ToolTipText = 'Switch language / Sprache wechseln'
+$toolStrip.Items.Add($tsBtnLang) | Out-Null
 
 $form.Controls.Add($toolStrip)
 
@@ -1890,7 +2412,6 @@ $tabControl.Dock = 'Fill'
 $form.Controls.Add($tabControl)
 
 $tabKonfig = New-Object System.Windows.Forms.TabPage
-$tabKonfig.Text    = 'Konfiguration'
 $tabKonfig.Padding = New-Object System.Windows.Forms.Padding(4)
 $tabControl.TabPages.Add($tabKonfig)
 
@@ -1912,7 +2433,6 @@ $panelLeft.Dock = 'Fill'
 $split.Panel1.Controls.Add($panelLeft)
 
 $lblGrid = New-Object System.Windows.Forms.Label
-$lblGrid.Text     = 'AlwaysOn-Konfiguration'
 $lblGrid.Dock     = 'Top'
 $lblGrid.Height   = 24
 $lblGrid.Font     = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
@@ -1931,7 +2451,6 @@ $panelButtons.Height = 42
 $panelLeft.Controls.Add($panelButtons)
 
 $btnOK = New-Object System.Windows.Forms.Button
-$btnOK.Text     = 'OK  –  Konfiguration starten'
 $btnOK.Size     = New-Object System.Drawing.Size(220, 32)
 $btnOK.Location = New-Object System.Drawing.Point(6, 5)
 $btnOK.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
@@ -1941,14 +2460,12 @@ $btnOK.Enabled  = $false
 $panelButtons.Controls.Add($btnOK)
 
 $btnClose = New-Object System.Windows.Forms.Button
-$btnClose.Text     = 'Schließen'
 $btnClose.Size     = New-Object System.Drawing.Size(100, 32)
 $btnClose.Location = New-Object System.Drawing.Point(234, 5)
 $btnClose.FlatStyle = 'Flat'
 $panelButtons.Controls.Add($btnClose)
 
 $btnContinue = New-Object System.Windows.Forms.Button
-$btnContinue.Text      = '▶  Weiter'
 $btnContinue.Size      = New-Object System.Drawing.Size(120, 32)
 $btnContinue.Location  = New-Object System.Drawing.Point(342, 5)
 $btnContinue.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 80)
@@ -1964,7 +2481,6 @@ $panelRight.Dock = 'Fill'
 $split.Panel2.Controls.Add($panelRight)
 
 $lblLog = New-Object System.Windows.Forms.Label
-$lblLog.Text      = 'Protokoll'
 $lblLog.Dock      = 'Top'
 $lblLog.Height    = 24
 $lblLog.Font      = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
@@ -1986,14 +2502,12 @@ $panelRtfButtons.Height = 42
 $panelRight.Controls.Add($panelRtfButtons)
 
 $btnClearLog = New-Object System.Windows.Forms.Button
-$btnClearLog.Text     = 'Protokoll leeren'
 $btnClearLog.Size     = New-Object System.Drawing.Size(140, 32)
 $btnClearLog.Location = New-Object System.Drawing.Point(6, 5)
 $btnClearLog.FlatStyle = 'Flat'
 $panelRtfButtons.Controls.Add($btnClearLog)
 
 $btnSaveLog = New-Object System.Windows.Forms.Button
-$btnSaveLog.Text     = '💾 Protokoll speichern'
 $btnSaveLog.Size     = New-Object System.Drawing.Size(160, 32)
 $btnSaveLog.Location = New-Object System.Drawing.Point(154, 5)
 $btnSaveLog.FlatStyle = 'Flat'
@@ -2004,9 +2518,14 @@ $panelRtfButtons.Controls.Add($btnSaveLog)
 # ---------------------------------------------------------------------------
 $statusBar = New-Object System.Windows.Forms.StatusStrip
 $statusLabel = New-Object System.Windows.Forms.ToolStripStatusLabel
-$statusLabel.Text = 'Bereit.'
 $statusBar.Items.Add($statusLabel) | Out-Null
 $form.Controls.Add($statusBar)
+
+# ---------------------------------------------------------------------------
+# Initialize UI with current language
+# ---------------------------------------------------------------------------
+Update-UILanguage
+$statusLabel.Text = T 'StatusReady'
 
 # ---------------------------------------------------------------------------
 # Script-globale Config-Variable
@@ -2019,7 +2538,7 @@ $script:originalServiceAccount = ''   # Beim Einlesen gesetzter Referenzwert
 # ---------------------------------------------------------------------------
 function Invoke-LoadData {
     $btnOK.Enabled = $false
-    $statusLabel.Text = 'Lese Cluster-Informationen ...'
+    $statusLabel.Text = T 'StatusReadingCluster'
     [System.Windows.Forms.Application]::DoEvents()
 
     try {
@@ -2064,10 +2583,10 @@ function Invoke-LoadData {
         $propGrid.SelectedObject = $script:agConfig
         $propGrid.ExpandAllGridItems()
         $btnOK.Enabled = $true
-        $statusLabel.Text = "Eingelesen: $($rawInfo['ClusterName'])  –  OK"
+        $statusLabel.Text = T 'StatusEntering' -f $rawInfo['ClusterName']
     } catch {
-        Write-RtfError -Rtb $rtfBox -Msg "Fehler beim Einlesen: $_"
-        $statusLabel.Text = 'Fehler beim Einlesen – Details im Protokoll.'
+        Write-RtfError -Rtb $rtfBox -Msg "$(T 'ErrorDatabaseFailed' -f $_)"
+        $statusLabel.Text = T 'StatusReadError'
     }
 }
 
@@ -2078,31 +2597,38 @@ function Invoke-LoadData {
 # Toolbar: Neu einlesen
 $tsBtnLoad.Add_Click({ Invoke-LoadData })
 
+# Toolbar: Language switch
+$tsBtnLang.Add_Click({
+    $script:CurrentLang = if ($script:CurrentLang -eq 'DE') { 'EN' } else { 'DE' }
+    Update-UILanguage
+    $statusLabel.Text = T 'StatusReady'
+})
+
 # Toolbar: AD-Konto prüfen
 $tsBtnValidate.Add_Click({
     if (-not $script:agConfig -or -not $script:agConfig.ServiceAccount) {
         [System.Windows.Forms.MessageBox]::Show(
-            'Bitte zuerst ein Service-Konto im PropertyGrid eingeben.',
-            'Konto prüfen', 'OK', 'Warning') | Out-Null
+            (T 'MsgNoAccount'),
+            (T 'MsgTitleAccountCheck'), 'OK', 'Warning') | Out-Null
         return
     }
-    $statusLabel.Text = "AD-Prüfung: $($script:agConfig.ServiceAccount) ..."
+    $statusLabel.Text = T 'StatusADCheck' -f $script:agConfig.ServiceAccount
     [System.Windows.Forms.Application]::DoEvents()
-    Write-RtfInfo -Rtb $rtfBox -Msg "AD-Prüfung für Konto '$($script:agConfig.ServiceAccount)' ..."
+    Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoADCheckFor' -f $script:agConfig.ServiceAccount)
     $result = Test-ADAccount -AccountName $script:agConfig.ServiceAccount
     if ($result.Found) {
-        Write-RtfSuccess -Rtb $rtfBox -Msg "  Konto gefunden: $($result.DisplayName)  ($($result.UPN))"
-        $statusLabel.Text = "Konto '$($script:agConfig.ServiceAccount)' ist gültig."
+        Write-RtfSuccess -Rtb $rtfBox -Msg (T 'InfoAccountFound' -f $result.DisplayName, $result.UPN)
+        $statusLabel.Text = T 'StatusAccountValid' -f $script:agConfig.ServiceAccount
         [System.Windows.Forms.MessageBox]::Show(
-            "Konto gefunden:`nAnzeigename: $($result.DisplayName)`nUPN: $($result.UPN)",
-            'AD-Prüfung', 'OK', 'Information') | Out-Null
+            (T 'MsgAccountFound' -f $result.DisplayName, $result.UPN),
+            (T 'MsgTitleADCheck'), 'OK', 'Information') | Out-Null
     } else {
-        $errMsg = if ($result.Error) { $result.Error } else { 'Konto nicht im AD gefunden.' }
-        Write-RtfError -Rtb $rtfBox -Msg "  AD-Prüfung fehlgeschlagen: $errMsg"
-        $statusLabel.Text = "Konto '$($script:agConfig.ServiceAccount)' NICHT gefunden."
+        $errMsg = if ($result.Error) { $result.Error } else { T 'ErrorAccountNotInAD' }
+        Write-RtfError -Rtb $rtfBox -Msg "  $(T 'ErrorADCheckFailed' -f $errMsg)"
+        $statusLabel.Text = T 'StatusAccountNotFound' -f $script:agConfig.ServiceAccount
         [System.Windows.Forms.MessageBox]::Show(
-            "Konto nicht gefunden:`n$errMsg",
-            'AD-Prüfung', 'OK', 'Warning') | Out-Null
+            (T 'MsgAccountNotFound' -f $errMsg),
+            (T 'MsgTitleADCheck'), 'OK', 'Warning') | Out-Null
     }
 })
 
@@ -2112,7 +2638,7 @@ $btnOK.Add_Click({
 
     # Pflichtfeld-Prüfung
     if (-not $script:agConfig.AGName) {
-        [System.Windows.Forms.MessageBox]::Show('Bitte einen AG-Namen eingeben.', 'Fehler', 'OK', 'Error') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show((T 'MsgAGNameRequired'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
         return
     }
     # Passwort nur prüfen wenn das Konto gegenüber dem Original geändert wurde
@@ -2123,27 +2649,20 @@ $btnOK.Add_Click({
     )
     if ($accountChanged -and -not $script:agConfig.ServicePassword) {
         $dlg = [System.Windows.Forms.MessageBox]::Show(
-            "Das Service-Konto wurde auf '$($script:agConfig.ServiceAccount)' geändert,`naber es wurde kein Passwort eingegeben. Trotzdem fortfahren?",
-            'Passwort fehlt', 'YesNo', 'Warning')
+            (T 'WarnConfirmPassword' -f $script:agConfig.ServiceAccount),
+            (T 'MsgTitlePasswordMissing'), 'YesNo', 'Warning')
         if ($dlg -ne 'Yes') { return }
     }
 
     $kontoStatus = if ($accountChanged) {
-        "  Konto      : ÄNDERUNG  '$($script:originalServiceAccount)'  →  '$($script:agConfig.ServiceAccount)'"
+        T 'MsgAccountChangeInfo' -f $script:originalServiceAccount, $script:agConfig.ServiceAccount
     } else {
-        "  Konto      : unverändert ($($script:agConfig.ServiceAccount))"
+        T 'MsgAccountNoChange' -f $script:agConfig.ServiceAccount
     }
 
     $confirm = [System.Windows.Forms.MessageBox]::Show(
-        "AlwaysOn-Konfiguration wird gestartet:`n`n" +
-        "  AG-Name    : $($script:agConfig.AGName)`n" +
-        "  Primary    : $($script:agConfig.Node1.SqlInstance)`n" +
-        "  Endpoint   : Port $($script:agConfig.EndpointPort)`n" +
-        "  Failover   : $($script:agConfig.FailoverMode)`n" +
-        "  Datenbank  : $($script:agConfig.TestDatabase)`n" +
-        "$kontoStatus`n`n" +
-        'Jetzt ausführen?',
-        'Bestätigung', 'YesNo', 'Question')
+        (T 'MsgConfigStarting' -f $script:agConfig.AGName, $script:agConfig.Node1.SqlInstance, $script:agConfig.EndpointPort, $script:agConfig.FailoverMode, $script:agConfig.TestDatabase, $kontoStatus),
+        (T 'MsgTitleConfirm'), 'YesNo', 'Question')
 
     if ($confirm -eq 'Yes') {
         Start-AlwaysOnConfiguration -Config $script:agConfig -Rtb $rtfBox -BtnOK $btnOK
@@ -2156,7 +2675,7 @@ $btnClose.Add_Click({ $form.Close() })
 # Weiter – nach manuellem Login-Anlegen durch den Anwender
 $btnContinue.Add_Click({
     $btnContinue.Enabled = $false
-    $statusLabel.Text    = 'Verbindung wird geprüft ...'
+    $statusLabel.Text    = T 'StatusVerifying'
 
     # SQL-Login auf allen Nodes testen
     $cred    = $script:setupLoginCred
@@ -2167,26 +2686,26 @@ $btnContinue.Add_Click({
         try {
             $testConn = Connect-DbaInstance -SqlInstance $instance -SqlCredential $cred -ErrorAction Stop
             $testConn.ConnectionContext.Disconnect()
-            Write-RtfSuccess -Rtb $rtfBox -Msg "  SQL-Auth '$instance': OK"
+            Write-RtfSuccess -Rtb $rtfBox -Msg (T 'InfoSQLAuthSuccess' -f $instance)
         } catch {
-            Write-RtfError -Rtb $rtfBox -Msg "  SQL-Auth '$instance': fehlgeschlagen – $_"
+            Write-RtfError -Rtb $rtfBox -Msg (T 'WarnSQLAuthFailedNode' -f $instance, $_)
             $failed += $instance
             $allOk = $false
         }
     }
 
     if (-not $allOk) {
-        Write-RtfError -Rtb $rtfBox -Msg "  Login auf folgenden Nodes nicht erreichbar: $($failed -join ', ')"
-        Write-RtfWarn  -Rtb $rtfBox -Msg "  Bitte Login prüfen und erneut auf 'Weiter' klicken."
+        Write-RtfError -Rtb $rtfBox -Msg "$(T 'ErrorDatabaseFailed' -f (T 'WarnLoginRetry'))"
+        Write-RtfWarn  -Rtb $rtfBox -Msg (T 'WarnLoginRetry')
         $btnContinue.Enabled = $true
-        $statusLabel.Text    = 'SQL-Login nicht auf allen Nodes erreichbar – bitte prüfen.'
+        $statusLabel.Text    = T 'StatusSQLAuthFailed'
         return
     }
 
     # Alle Nodes erreichbar → Konfiguration fortsetzen
     $btnContinue.Visible = $false
-    $statusLabel.Text    = 'Konfiguration läuft ...'
-    Write-RtfSuccess -Rtb $rtfBox -Msg "  SQL-Auth auf allen Nodes erfolgreich – Konfiguration wird fortgesetzt."
+    $statusLabel.Text    = T 'StatusConfigRunning'
+    Write-RtfSuccess -Rtb $rtfBox -Msg (T 'InfoSQLAuthOnAllSuccess')
 
     Invoke-AlwaysOnSteps -Config $script:agConfig -Rtb $rtfBox -BtnOK $btnOK -SqlCred $cred
 })
@@ -2197,15 +2716,15 @@ $btnClearLog.Add_Click({ $rtfBox.Clear() })
 # Protokoll speichern
 $btnSaveLog.Add_Click({
     $dlg = New-Object System.Windows.Forms.SaveFileDialog
-    $dlg.Filter   = 'RTF-Datei (*.rtf)|*.rtf|Textdatei (*.txt)|*.txt'
-    $dlg.FileName = "AlwaysOn_Setup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+    $dlg.Filter   = T 'SaveDialogFilter'
+    $dlg.FileName = T 'SaveDialogFileName' -f (Get-Date -Format 'yyyyMMdd_HHmmss')
     if ($dlg.ShowDialog() -eq 'OK') {
         if ($dlg.FileName -like '*.rtf') {
             $rtfBox.SaveFile($dlg.FileName, 'RichText')
         } else {
             $rtfBox.SaveFile($dlg.FileName, 'PlainText')
         }
-        Write-RtfInfo -Rtb $rtfBox -Msg "Protokoll gespeichert: $($dlg.FileName)"
+        Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoLogfileSaved' -f $dlg.FileName)
     }
 })
 
@@ -2213,8 +2732,8 @@ $btnSaveLog.Add_Click({
 $propGrid.Add_PropertyValueChanged({
     param($sender, $e)
     if ($e.ChangedItem.PropertyDescriptor.Name -eq 'ServiceAccount') {
-        $statusLabel.Text = "Service-Konto geändert – bitte AD-Prüfung ausführen."
-        Write-RtfWarn -Rtb $rtfBox -Msg "Service-Konto geändert auf '$($script:agConfig.ServiceAccount)' – AD-Prüfung empfohlen."
+        $statusLabel.Text = T 'StatusServiceAccountChanged'
+        Write-RtfWarn -Rtb $rtfBox -Msg (T 'WarnAccountValidationFailed' -f $script:agConfig.ServiceAccount)
     }
 })
 
@@ -2242,7 +2761,7 @@ $form.Add_Resize({
 
 # Form Load: Modul-Status melden, ggf. Neustart fordern, dann Daten einlesen
 $form.Add_Load({
-    Write-RtfSection -Rtb $rtfBox -Msg 'Modul-Voraussetzungen'
+    Write-RtfSection -Rtb $rtfBox -Msg (T 'SectionModuleReqs')
 
     # Modul-Fehler anzeigen
     if ($script:moduleErrors.Count -gt 0) {
@@ -2250,29 +2769,26 @@ $form.Add_Load({
             Write-RtfError -Rtb $rtfBox -Msg $err
         }
         $btnOK.Enabled = $false
-        $statusLabel.Text = 'FEHLER: Erforderliche Module nicht verfügbar – Details im Protokoll.'
+        $statusLabel.Text = T 'StatusModuleError'
         [System.Windows.Forms.MessageBox]::Show(
             ($script:moduleErrors -join "`n`n"),
-            'Modul-Installation fehlgeschlagen', 'OK', 'Error') | Out-Null
+            (T 'MsgTitleModuleInstallFailed'), 'OK', 'Error') | Out-Null
         return
     }
 
     # Module vorhanden – Status protokollieren
     $fcVer  = (Get-Module -Name FailoverClusters -ErrorAction SilentlyContinue).Version
     $dbaVer = (Get-Module -Name dbatools         -ErrorAction SilentlyContinue).Version
-    Write-RtfSuccess -Rtb $rtfBox -Msg "FailoverClusters v$fcVer  – OK"
-    Write-RtfSuccess -Rtb $rtfBox -Msg "dbaTools v$dbaVer  – OK"
+    Write-RtfSuccess -Rtb $rtfBox -Msg (T 'InfoModuleVersion' -f 'FailoverClusters', $fcVer)
+    Write-RtfSuccess -Rtb $rtfBox -Msg (T 'InfoModuleVersion' -f 'dbaTools', $dbaVer)
 
     # Neustart der Session erforderlich?
     if ($script:restartRequired) {
-        $msg = "Ein oder mehrere Module wurden neu installiert.`n" +
-               "Die aktuelle PowerShell-Session muss neu gestartet werden,`n" +
-               "damit alle Module korrekt geladen werden.`n`n" +
-               "Bitte das Skript nach dem Neustart erneut ausführen."
+        $msg = T 'WarnModuleRestartNeeded'
         Write-RtfWarn -Rtb $rtfBox -Msg $msg
-        $statusLabel.Text = 'Session-Neustart erforderlich!'
+        $statusLabel.Text = T 'StatusRestartRequired'
         [System.Windows.Forms.MessageBox]::Show(
-            $msg, 'Neustart erforderlich', 'OK', 'Warning') | Out-Null
+            $msg, (T 'MsgTitleRestartRequired'), 'OK', 'Warning') | Out-Null
         $btnOK.Enabled = $false
         return
     }
@@ -2284,5 +2800,5 @@ $form.Add_Load({
 # ---------------------------------------------------------------------------
 # Anwendung starten
 # ---------------------------------------------------------------------------
-Write-RtfSection -Rtb $rtfBox -Msg "SQL Server AlwaysOn Setup Tool v$script:Version gestartet"
+Write-RtfSection -Rtb $rtfBox -Msg (T 'AppVersion' -f $script:Version)
 [System.Windows.Forms.Application]::Run($form)
