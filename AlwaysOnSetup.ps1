@@ -301,6 +301,11 @@ $script:LangStrings = @{
         'MsgAccountNotFound'                 = "Konto nicht gefunden:`n{0}"
         'MsgAGNameRequired'                  = 'Bitte einen AG-Namen eingeben.'
         'MsgListenerNameRequired'            = 'Bitte einen Listener-Namen eingeben. Keine Cluster-Rolle gefunden - manuell eintragen!'
+        'BtnReset'                           = 'Zuruecksetzen'
+        'BtnResetTooltip'                    = 'AG-Name und Listener-Name auf erkannte Werte zuruecksetzen'
+        'InfoResetDone'                      = 'AG-Name und Listener-Name zurueckgesetzt.'
+        'InfoIPCheckOK'                      = 'IP-Adresse {0} aufgeloest: {1}'
+        'WarnIPCheckFail'                    = 'IP-Adresse {0} konnte nicht aufgeloest werden - bitte pruefen!'
         'MsgConfigStarting'                  = "AlwaysOn-Konfiguration wird gestartet:`n`n" +
                                               "  AG-Name    : {0}`n" +
                                               "  Primary    : {1}`n" +
@@ -542,6 +547,11 @@ $script:LangStrings = @{
         'MsgAccountNotFound'                 = "Account not found:`n{0}"
         'MsgAGNameRequired'                  = 'Please enter an AG name.'
         'MsgListenerNameRequired'            = 'Please enter a listener name. No cluster role found - enter manually!'
+        'BtnReset'                           = 'Reset'
+        'BtnResetTooltip'                    = 'Reset AG name and listener name to detected values'
+        'InfoResetDone'                      = 'AG name and listener name reset to detected values.'
+        'InfoIPCheckOK'                      = 'IP address {0} resolved: {1}'
+        'WarnIPCheckFail'                    = 'IP address {0} could not be resolved - please check!'
         'MsgConfigStarting'                  = "AlwaysOn configuration starting:`n`n" +
                                               "  AG name     : {0}`n" +
                                               "  Primary     : {1}`n" +
@@ -576,6 +586,8 @@ function Update-UILanguage {
     $tsBtnLoad.ToolTipText  = T 'BtnReloadTooltip'
     $tsBtnValidate.Text     = T 'BtnValidate'
     $tsBtnValidate.ToolTipText = T 'BtnValidateTooltip'
+    $tsBtnReset.Text        = T 'BtnReset'
+    $tsBtnReset.ToolTipText = T 'BtnResetTooltip'
     if ($tsBtnLang) {
         $tsBtnLang.Text     = if ($script:CurrentLang -eq 'DE') { '🌐 EN' } else { '🌐 DE' }
     }
@@ -2407,6 +2419,12 @@ $toolStrip.Items.Add($tsBtnValidate) | Out-Null
 
 $toolStrip.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 
+$tsBtnReset = New-Object System.Windows.Forms.ToolStripButton
+$tsBtnReset.Enabled = $false
+$toolStrip.Items.Add($tsBtnReset) | Out-Null
+
+$toolStrip.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+
 $tsBtnLang = New-Object System.Windows.Forms.ToolStripButton
 $tsBtnLang.ToolTipText = 'Switch language / Sprache wechseln'
 $toolStrip.Items.Add($tsBtnLang) | Out-Null
@@ -2551,6 +2569,7 @@ function Invoke-LoadData {
     try {
         $rawInfo = Get-ClusterAndSqlInfo -Rtb $rtfBox
 
+        $script:rawClusterInfo = $rawInfo   # Originalwerte fuer Reset-Button
         $script:agConfig = New-Object AgConfig
         $script:agConfig.ClusterName     = $rawInfo['ClusterName']
         $script:agConfig.ListenerName    = $rawInfo['ListenerName']
@@ -2590,6 +2609,7 @@ function Invoke-LoadData {
         $propGrid.SelectedObject = $script:agConfig
         $propGrid.ExpandAllGridItems()
         $btnOK.Enabled = $true
+        $tsBtnReset.Enabled = $true
         $statusLabel.Text = T 'StatusEntering' -f $rawInfo['ClusterName']
     } catch {
         Write-RtfError -Rtb $rtfBox -Msg "$(T 'ErrorDatabaseFailed' -f $_)"
@@ -2739,12 +2759,32 @@ $btnSaveLog.Add_Click({
     }
 })
 
-# PropertyGrid: Änderung verfolgen (Konto-Warnung)
+# Toolbar: Reset AG-Name und Listener-Name
+$tsBtnReset.Add_Click({
+    if (-not $script:agConfig -or -not $script:rawClusterInfo) { return }
+    $script:agConfig.AGName       = $script:rawClusterInfo['AGName']
+    $script:agConfig.ListenerName = $script:rawClusterInfo['ListenerName']
+    $propGrid.Refresh()
+    Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoResetDone')
+})
+
+# PropertyGrid: Änderung verfolgen (Konto-Warnung + IP-Check)
 $propGrid.Add_PropertyValueChanged({
     param($sender, $e)
     if ($e.ChangedItem.PropertyDescriptor.Name -eq 'ServiceAccount') {
         $statusLabel.Text = T 'StatusServiceAccountChanged'
         Write-RtfWarn -Rtb $rtfBox -Msg (T 'WarnAccountValidationFailed' -f $script:agConfig.ServiceAccount)
+    }
+    if ($e.ChangedItem.PropertyDescriptor.Name -eq 'ListenerIP') {
+        $ip = $script:agConfig.ListenerIP
+        if ($ip) {
+            try {
+                $resolved = [System.Net.Dns]::GetHostEntry($ip)
+                Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoIPCheckOK' -f $ip, $resolved.HostName)
+            } catch {
+                Write-RtfWarn -Rtb $rtfBox -Msg (T 'WarnIPCheckFail' -f $ip)
+            }
+        }
     }
 })
 
