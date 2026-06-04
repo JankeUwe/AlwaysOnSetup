@@ -300,6 +300,7 @@ $script:LangStrings = @{
         'MsgAccountFound'                    = "Konto gefunden:`nAnzeigename: {0}`nUPN: {1}"
         'MsgAccountNotFound'                 = "Konto nicht gefunden:`n{0}"
         'MsgAGNameRequired'                  = 'Bitte einen AG-Namen eingeben.'
+        'MsgListenerNameRequired'            = 'Bitte einen Listener-Namen eingeben. Keine Cluster-Rolle gefunden - manuell eintragen!'
         'MsgConfigStarting'                  = "AlwaysOn-Konfiguration wird gestartet:`n`n" +
                                               "  AG-Name    : {0}`n" +
                                               "  Primary    : {1}`n" +
@@ -540,6 +541,7 @@ $script:LangStrings = @{
         'MsgAccountFound'                    = "Account found:`nDisplay name: {0}`nUPN: {1}"
         'MsgAccountNotFound'                 = "Account not found:`n{0}"
         'MsgAGNameRequired'                  = 'Please enter an AG name.'
+        'MsgListenerNameRequired'            = 'Please enter a listener name. No cluster role found - enter manually!'
         'MsgConfigStarting'                  = "AlwaysOn configuration starting:`n`n" +
                                               "  AG name     : {0}`n" +
                                               "  Primary     : {1}`n" +
@@ -787,8 +789,8 @@ function Get-ClusterAndSqlInfo {
     # ---- Windows Failover Cluster ----
     try {
         $cluster = Get-Cluster
-        $info['ClusterName'] = $cluster.Name
-        Write-RtfInfo -Rtb $Rtb -Msg "Cluster gefunden: $($cluster.Name)"
+        $info['ClusterName'] = $cluster.Name.Trim()
+        Write-RtfInfo -Rtb $Rtb -Msg "Cluster gefunden: $($cluster.Name.Trim())"
     } catch {
         Write-RtfError -Rtb $Rtb -Msg "Cluster nicht erreichbar: $_"
         throw
@@ -816,17 +818,19 @@ function Get-ClusterAndSqlInfo {
 
         # Listener-Rolle: erste Rolle mit Netzwerkname-Ressource
         foreach ($role in $roles) {
+            $roleName = $role.Name.Trim()  # Trim cluster role names to avoid sync issues
+
             $netNameRes = Get-ClusterResource | Where-Object {
-                $_.OwnerGroup -eq $role.Name -and $_.ResourceType -like '*Network Name*'
+                $_.OwnerGroup -eq $roleName -and $_.ResourceType -like '*Network Name*'
             } | Select-Object -First 1
 
             if ($netNameRes) {
                 $listenerName = Get-ClusterParameter -InputObject $netNameRes -Name Name -ErrorAction SilentlyContinue |
                     Select-Object -ExpandProperty Value -ErrorAction SilentlyContinue
-                if (-not $listenerName) { $listenerName = $role.Name }
+                if (-not $listenerName) { $listenerName = $roleName }
 
                 $ipRes = Get-ClusterResource | Where-Object {
-                    $_.OwnerGroup -eq $role.Name -and $_.ResourceType -like '*IP Address*'
+                    $_.OwnerGroup -eq $roleName -and $_.ResourceType -like '*IP Address*'
                 } | Select-Object -First 1
 
                 if ($ipRes) {
@@ -851,7 +855,9 @@ function Get-ClusterAndSqlInfo {
                 break
             }
         }
-        if (-not $listenerName) { $listenerName = $info['ClusterName'] }
+        if (-not $listenerName) {
+            Write-RtfWarn -Rtb $Rtb -Msg "Keine Cluster-Rolle mit Netzwerkname gefunden. Listener-Name und AG-Name muessen manuell eingetragen werden!"
+        }
         Write-RtfInfo -Rtb $Rtb -Msg "Listener-Name: $listenerName  |  IP: $listenerIP  |  Port: $listenerPort"
     } catch {
         Write-RtfWarn -Rtb $Rtb -Msg "Listener-Informationen unvollständig: $_"
@@ -861,7 +867,8 @@ function Get-ClusterAndSqlInfo {
     $info['ListenerIP']   = $listenerIP
     $info['ListenerPort'] = $listenerPort
 
-    # AG-Name: Default = Listener-Name
+    # AG-Name: Default = Listener-Name (nur wenn Listener gefunden!)
+    # Wenn leer -> manuell eintragen, NICHT ClusterName verwenden!
     $info['AGName']       = $listenerName
 
     # ---- SQL Server Instanzen pro Node ----
@@ -986,7 +993,7 @@ public class AgConfig {
 
     [Category("1 - Cluster")]
     [DisplayName("Listener-Name")]
-    [ReadOnly(true)]
+    [Description("Listener-Name (automatisch erkannt oder manuell eintragen wenn keine Cluster-Rolle gefunden)")]
     public string ListenerName { get; set; }
 
     [Category("1 - Cluster")]
@@ -1510,14 +1517,14 @@ function Invoke-AlwaysOnSteps {
         $lines.Add('Cluster-Ressourcen (WSFC):')
         try {
             Get-ClusterGroup | ForEach-Object {
-                $lines.Add("  Gruppe: $($_.Name)  |  Status: $($_.State)  |  Owner: $($_.OwnerNode)")
+                $lines.Add("  Gruppe: $($_.Name.Trim())  |  Status: $($_.State)  |  Owner: $($_.OwnerNode.Trim())")
             }
         } catch { $lines.Add("  (nicht lesbar: $_)") }
         $lines.Add('')
         $lines.Add('Cluster-Nodes:')
         try {
             Get-ClusterNode | ForEach-Object {
-                $lines.Add("  Node: $($_.Name)  |  Status: $($_.State)")
+                $lines.Add("  Node: $($_.Name.Trim())  |  Status: $($_.State)")
             }
         } catch { $lines.Add("  (nicht lesbar: $_)") }
         $lines.Add('')
@@ -2639,6 +2646,10 @@ $btnOK.Add_Click({
     # Pflichtfeld-Prüfung
     if (-not $script:agConfig.AGName) {
         [System.Windows.Forms.MessageBox]::Show((T 'MsgAGNameRequired'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
+        return
+    }
+    if (-not $script:agConfig.ListenerName) {
+        [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerNameRequired'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
         return
     }
     # Passwort nur prüfen wenn das Konto gegenüber dem Original geändert wurde
