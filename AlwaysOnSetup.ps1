@@ -1170,6 +1170,47 @@ function New-RandomPassword {
 }
 
 # ---------------------------------------------------------------------------
+# Hilfsfunktion: Findet einen gültigen sysadmin-Login für Job/Endpoint Owner
+# (Handhabe: 'sa' könnte umbenannt oder deaktiviert sein)
+# ---------------------------------------------------------------------------
+function Get-ValidSysAdminLogin {
+    param (
+        [string]$SqlInstance,
+        [PSCredential]$SqlCredential,
+        [string]$PreferredLogin  # z.B. ServiceAccount wenn bekannt
+    )
+
+    # Wenn PreferredLogin gesetzt, versuche das zuerst
+    if ($PreferredLogin -and $PreferredLogin -ne 'sa') {
+        try {
+            $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential `
+                -Query "SELECT name FROM sys.server_principals WHERE name = N'$PreferredLogin' AND is_srvrolemember('sysadmin', name) = 1" `
+                -ErrorAction SilentlyContinue
+            if ($result) { return $PreferredLogin }
+        } catch { }
+    }
+
+    # Versuche 'sa' zu finden (ist häufig noch vorhanden, auch wenn umbenannt)
+    try {
+        $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential `
+            -Query "SELECT name FROM sys.server_principals WHERE name = N'sa' AND is_srvrolemember('sysadmin', name) = 1" `
+            -ErrorAction SilentlyContinue
+        if ($result) { return 'sa' }
+    } catch { }
+
+    # Fallback: Erster verfügbarer sysadmin
+    try {
+        $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential `
+            -Query "SELECT TOP 1 name FROM sys.server_principals WHERE is_srvrolemember('sysadmin', name) = 1 AND name NOT LIKE '##%' ORDER BY name" `
+            -ErrorAction SilentlyContinue
+        if ($result) { return $result.name }
+    } catch { }
+
+    # Letzter Resort: 'sa' (könnte fehlschlagen, aber dann ist sowieso was falsch)
+    return 'sa'
+}
+
+# ---------------------------------------------------------------------------
 # Hilfsfunktion: Temporäres sysadmin-Login auf allen Nodes anlegen
 # Gibt PSCredential zurück wenn SQL-Auth nötig war, sonst $null (Windows-Auth)
 # $script:setupLoginName wird gesetzt damit Remove-SetupCredential aufräumen kann
@@ -1707,8 +1748,9 @@ function Invoke-AlwaysOnSteps {
                 # Ohne Klausel wäre es der aktuell ausführende Login –
                 # beim SQL-Auth-Fallback der temporäre AGSetup_*-Login,
                 # der am Ende gelöscht wird (verwaister Eigentümer).
-                # Wir verwenden das Service-Konto wenn bekannt, sonst sa.
-                $epOwner = if ($Config.ServiceAccount) { $Config.ServiceAccount } else { 'sa' }
+                # Wir verwenden das Service-Konto wenn bekannt, sonst suchen wir einen gültigen sysadmin
+                # (handhabe: 'sa' könnte umbenannt oder deaktiviert sein)
+                $epOwner = Get-ValidSysAdminLogin -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -PreferredLogin $Config.ServiceAccount
                 Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop -Query @"
 CREATE ENDPOINT [HADR_Endpoint]
     AUTHORIZATION [$epOwner]
@@ -2163,9 +2205,11 @@ foreach (`$dest in `$otherInstances) {
                 }
 
                 # Job anlegen
+                # Verwende gültigen sysadmin als Owner (handhabe: 'sa' könnte umbenannt/deaktiviert sein)
+                $jobOwner = Get-ValidSysAdminLogin -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -PreferredLogin $Config.ServiceAccount
                 $job = New-DbaAgentJob -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
                     -Job $jobName -Description $jobDesc -Category $jobCategory `
-                    -OwnerLogin 'sa' -EnableException
+                    -OwnerLogin $jobOwner -EnableException
 
                 # Job-Step anlegen (PowerShell)
                 New-DbaAgentJobStep -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
