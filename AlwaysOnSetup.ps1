@@ -925,7 +925,7 @@ function Get-ClusterAndSqlInfo {
     }
 
     # Backup-Pfad per T-SQL statt Get-DbaDefaultPath
-    $bakupPath = 'C:\Temp'
+    $bakupPath = 'C:\System\Backups'
     try {
         $pathResult = Invoke-DbaQuery -SqlInstance $sqlInstances[0] -ErrorAction SilentlyContinue `
             -Query "EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'Software\Microsoft\MSSQLServer\MSSQLServer', N'BackupDirectory'" |
@@ -1402,9 +1402,9 @@ function _Set-HadrEndpointCertAuth {
     )
 
     $certs   = @{}   # Node -> Zertifikatname
-    $tmpPath = 'C:\Temp'
+    $tmpPath = 'C:\System\Certs'
 
-    # Sicherstellen dass C:\Temp auf allen Nodes existiert
+    # Sicherstellen dass $tmpPath auf allen Nodes existiert
     foreach ($nc in $ActiveNodes) {
         Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true `
             -Query "EXEC xp_create_subdir N'$tmpPath'"
