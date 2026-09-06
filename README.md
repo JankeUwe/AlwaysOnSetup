@@ -46,7 +46,7 @@ AlwaysOn_Handbuch.docx	User manual
 Version
 1.0.0 — 2026-04-27 — Initial release
 More Information
-Documentation: powershelldba.de/tools/alwayson-availability
+Documentation: www.powershelldba.de/alwaysonsetup/
 Website: www.powershelldba.de
 PowerShell Gallery: powershellgallery.com/profiles/JankeUwe
 All Projects: github.com/JankeUwe
