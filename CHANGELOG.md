@@ -1,5 +1,16 @@
 # AlwaysOnSetup — Changelog
 
+## [1.2.1] — 2026-10-22
+
+### Temporary setup login complies with the "New Login" password policy
+
+The usual PBM policy `New Login_Enforce Passwort Policy` (On Change: Prevent) rolls back
+`CREATE LOGIN` with `CHECK_POLICY = OFF` and `CREATE LOGIN ... FROM WINDOWS`. The temporary
+setup login is now created with `CHECK_POLICY = ON`, so it no longer depends on disabling the
+policy. If `CREATE LOGIN` for the service account is still rolled back by a trigger, the log
+now says so and lists the active server triggers and On-Change-Prevent policies, instead of
+the misleading "DOMAIN\User nicht auflösbar".
+
 ## [1.2.0] — 2026-10-22
 
 ### Setup runs over a temporary SQL login when Kerberos is not available
