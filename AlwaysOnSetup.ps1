@@ -1404,7 +1404,10 @@ function Initialize-SetupCredential {
             })
             if ($winOnly.Count -gt 0) { Enable-SqlMixedMode -Nodes $winOnly -Rtb $Rtb }
 
-            # PBM-Policy (On-Change: Prevent) würde CREATE LOGIN per Trigger zurückrollen
+            # PBM-Policy (On-Change: Prevent) rollt CREATE LOGIN ... FROM WINDOWS und
+            # CHECK_POLICY = OFF per Trigger zurück. Das Setup-Login selbst ist mit
+            # CHECK_POLICY = ON policy-konform; die Policy bleibt trotzdem bis zum Cleanup
+            # aus, damit Schritt 4 das Windows-Login des Dienstkontos anlegen kann.
             Set-PbmPolicy -Enable $false -Nodes $AllNodes -SqlCred $null -Rtb $Rtb
 
             $script:setupLoginName  = $loginName
@@ -1413,7 +1416,7 @@ function Initialize-SetupCredential {
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'$loginName')
 BEGIN
     CREATE LOGIN [$loginName] WITH PASSWORD = '$loginPwd',
-        CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF;
+        CHECK_POLICY = ON, CHECK_EXPIRATION = OFF;
     ALTER SERVER ROLE [sysadmin] ADD MEMBER [$loginName];
 END
 "@
@@ -1460,7 +1463,7 @@ EXEC msdb.dbo.sp_syspolicy_update_policy
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '{1}')
 BEGIN
     CREATE LOGIN [{1}] WITH PASSWORD = '{2}',
-        CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF;
+        CHECK_POLICY = ON, CHECK_EXPIRATION = OFF;
     ALTER SERVER ROLE [sysadmin] ADD MEMBER [{1}];
 END
 '@ -f $script:pbmPolicyName, $loginName, $loginPwd
@@ -1961,7 +1964,21 @@ CREATE ENDPOINT [HADR_Endpoint]
                         $loginCreated    = $true
                         Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login angelegt (DOMAIN\User)."
                     } catch {
-                        Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): DOMAIN\User nicht auflösbar ('$($_.Exception.Message -replace '\r?\n',' ')')"
+                        $loginErr = $_.Exception.Message -replace '\r?\n',' '
+                        if ($loginErr -match 'trigger') {
+                            # Kein AD-Problem: ein Server-Trigger (meist PBM 'On Change: Prevent') hat zurückgerollt
+                            $trg = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction SilentlyContinue `
+                                -Query "SELECT name FROM sys.server_triggers WHERE is_disabled = 0"
+                            $pol = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction SilentlyContinue `
+                                -Query "SELECT name FROM msdb.dbo.syspolicy_policies WHERE is_enabled = 1 AND execution_mode = 1"
+                            Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): CREATE LOGIN durch Server-Trigger zurückgerollt ('$loginErr')"
+                            $trgNames = if ($trg) { (@($trg) | ForEach-Object { $_.name }) -join ', ' } else { '(keine)' }
+                            $polNames = if ($pol) { (@($pol) | ForEach-Object { $_.name }) -join ', ' } else { '(keine)' }
+                            Write-RtfWarn -Rtb $Rtb -Msg "    Aktive Server-Trigger: $trgNames"
+                            Write-RtfWarn -Rtb $Rtb -Msg "    Aktive PBM-Policies (On Change: Prevent): $polNames"
+                        } else {
+                            Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): DOMAIN\User nicht auflösbar ('$loginErr')"
+                        }
                     }
 
                     # Versuch 2: UPN-Format (Cross-Domain-Fallback)
