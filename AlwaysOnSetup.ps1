@@ -54,7 +54,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.0.0'
+$script:Version = '1.1.0'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -301,9 +301,12 @@ $script:LangStrings = @{
         'MsgAccountNotFound'                 = "Konto nicht gefunden:`n{0}"
         'MsgAGNameRequired'                  = 'Bitte einen AG-Namen eingeben.'
         'MsgListenerNameRequired'            = 'Bitte einen Listener-Namen eingeben. Keine Cluster-Rolle gefunden - manuell eintragen!'
+        'MsgListenerIPRequired'              = 'Bitte eine gueltige Listener-IP (IPv4) eingeben. Keine Cluster-Rolle gefunden - manuell eintragen!'
+        'MsgListenerPortInvalid'             = 'Listener-Port muss zwischen 1 und 65535 liegen.'
+        'MsgListenerSubnetInvalid'           = 'Bitte eine gueltige Subnetzmaske eingeben (z.B. 255.255.255.0).'
         'BtnReset'                           = 'Zuruecksetzen'
-        'BtnResetTooltip'                    = 'AG-Name und Listener-Name auf erkannte Werte zuruecksetzen'
-        'InfoResetDone'                      = 'AG-Name und Listener-Name zurueckgesetzt.'
+        'BtnResetTooltip'                    = 'AG-Name und Listener-Daten auf erkannte Werte zuruecksetzen'
+        'InfoResetDone'                      = 'AG-Name und Listener-Daten zurueckgesetzt.'
         'InfoIPCheckOK'                      = 'IP-Adresse {0} aufgeloest: {1}'
         'WarnIPCheckFail'                    = 'IP-Adresse {0} konnte nicht aufgeloest werden - bitte pruefen!'
         'MsgConfigStarting'                  = "AlwaysOn-Konfiguration wird gestartet:`n`n" +
@@ -547,9 +550,12 @@ $script:LangStrings = @{
         'MsgAccountNotFound'                 = "Account not found:`n{0}"
         'MsgAGNameRequired'                  = 'Please enter an AG name.'
         'MsgListenerNameRequired'            = 'Please enter a listener name. No cluster role found - enter manually!'
+        'MsgListenerIPRequired'              = 'Please enter a valid listener IP (IPv4). No cluster role found - enter manually!'
+        'MsgListenerPortInvalid'             = 'Listener port must be between 1 and 65535.'
+        'MsgListenerSubnetInvalid'           = 'Please enter a valid subnet mask (e.g. 255.255.255.0).'
         'BtnReset'                           = 'Reset'
-        'BtnResetTooltip'                    = 'Reset AG name and listener name to detected values'
-        'InfoResetDone'                      = 'AG name and listener name reset to detected values.'
+        'BtnResetTooltip'                    = 'Reset AG name and listener settings to detected values'
+        'InfoResetDone'                      = 'AG name and listener settings reset to detected values.'
         'InfoIPCheckOK'                      = 'IP address {0} resolved: {1}'
         'WarnIPCheckFail'                    = 'IP address {0} could not be resolved - please check!'
         'MsgConfigStarting'                  = "AlwaysOn configuration starting:`n`n" +
@@ -824,6 +830,7 @@ function Get-ClusterAndSqlInfo {
     $listenerName  = ''
     $listenerIP    = ''
     $listenerPort  = 1433   # Fallback falls Cluster keinen Port liefert
+    $listenerMask  = '255.255.255.0'   # Fallback falls Cluster keine Maske liefert
     try {
         $roles = Get-ClusterGroup
         Write-RtfInfo -Rtb $Rtb -Msg "Cluster-Rollen: $(($roles | Select-Object -ExpandProperty Name) -join ', ')"
@@ -848,6 +855,9 @@ function Get-ClusterAndSqlInfo {
                 if ($ipRes) {
                     $listenerIP = Get-ClusterParameter -InputObject $ipRes -Name Address -ErrorAction SilentlyContinue |
                         Select-Object -ExpandProperty Value -ErrorAction SilentlyContinue
+                    $mask = Get-ClusterParameter -InputObject $ipRes -Name SubnetMask -ErrorAction SilentlyContinue |
+                        Select-Object -ExpandProperty Value -ErrorAction SilentlyContinue
+                    if ($mask) { $listenerMask = $mask }
 
                     $probePort = Get-ClusterParameter -InputObject $ipRes -Name ProbePort -ErrorAction SilentlyContinue |
                         Select-Object -ExpandProperty Value -ErrorAction SilentlyContinue
@@ -868,9 +878,9 @@ function Get-ClusterAndSqlInfo {
             }
         }
         if (-not $listenerName) {
-            Write-RtfWarn -Rtb $Rtb -Msg "Keine Cluster-Rolle mit Netzwerkname gefunden. Listener-Name und AG-Name muessen manuell eingetragen werden!"
+            Write-RtfWarn -Rtb $Rtb -Msg "Keine Cluster-Rolle mit Netzwerkname gefunden. Listener-Name, Listener-IP, Port, Subnetzmaske und AG-Name muessen manuell eingetragen werden!"
         }
-        Write-RtfInfo -Rtb $Rtb -Msg "Listener-Name: $listenerName  |  IP: $listenerIP  |  Port: $listenerPort"
+        Write-RtfInfo -Rtb $Rtb -Msg "Listener-Name: $listenerName  |  IP: $listenerIP  |  Port: $listenerPort  |  Maske: $listenerMask"
     } catch {
         Write-RtfWarn -Rtb $Rtb -Msg "Listener-Informationen unvollständig: $_"
     }
@@ -878,6 +888,7 @@ function Get-ClusterAndSqlInfo {
     $info['ListenerName'] = $listenerName
     $info['ListenerIP']   = $listenerIP
     $info['ListenerPort'] = $listenerPort
+    $info['ListenerSubnetMask'] = $listenerMask
 
     # AG-Name: Default = Listener-Name (nur wenn Listener gefunden!)
     # Wenn leer -> manuell eintragen, NICHT ClusterName verwenden!
@@ -1010,14 +1021,18 @@ public class AgConfig {
 
     [Category("1 - Cluster")]
     [DisplayName("Listener-IP")]
-    [ReadOnly(true)]
+    [Description("IPv4-Adresse des AG-Listeners (vom Cluster gelesen oder manuell eintragen, z.B. wenn die Cluster-Rolle vorher geloescht wurde)")]
     public string ListenerIP { get; set; }
 
     [Category("1 - Cluster")]
     [DisplayName("Listener-Port")]
-    [Description("TCP-Port des AG-Listeners – vom Cluster gelesen.")]
-    [ReadOnly(true)]
+    [Description("TCP-Port des AG-Listeners (vom Cluster gelesen oder manuell eintragen, Default: 1433)")]
     public int ListenerPort { get; set; }
+
+    [Category("1 - Cluster")]
+    [DisplayName("Listener-Subnetzmaske")]
+    [Description("Subnetzmaske der Listener-IP (vom Cluster gelesen oder manuell eintragen, Default: 255.255.255.0)")]
+    public string ListenerSubnetMask { get; set; }
 
     // ---- Nodes ----
     [Category("2 - Nodes")]
@@ -1555,6 +1570,7 @@ function Invoke-AlwaysOnSteps {
         $lines.Add("  Listener-Name : $($Config.ListenerName)")
         $lines.Add("  Listener-IP   : $($Config.ListenerIP)")
         $lines.Add("  Listener-Port : $($Config.ListenerPort)")
+        $lines.Add("  Listener-Maske: $($Config.ListenerSubnetMask)")
         $lines.Add("  Endpoint-Port : $($Config.EndpointPort)")
         $lines.Add("  Failover-Modus: $($Config.FailoverMode)")
         $lines.Add("  Backup-Präf.  : $($Config.BackupPreference)")
@@ -2094,7 +2110,7 @@ REPLICA ON
             if ($lsnCount -ne '1') {
                 if ($Config.ListenerIP -and $Config.ListenerPort) {
                     Write-RtfInfo -Rtb $Rtb -Msg "  Listener wird angelegt ..."
-                    $subnetMask = '255.255.255.0'
+                    $subnetMask = if ($Config.ListenerSubnetMask) { $Config.ListenerSubnetMask } else { '255.255.255.0' }
                     $lsnCreateSql = "ALTER AVAILABILITY GROUP [$($Config.AGName)] ADD LISTENER N'$($Config.ListenerName)' (WITH IP ((N'$($Config.ListenerIP)', N'$subnetMask')), PORT = $($Config.ListenerPort));"
                     if ($sqlCred) {
                         $lsnCreate = & sqlcmd -S $primaryInstance -U $sqlCred.UserName `
@@ -2603,6 +2619,16 @@ $script:agConfig               = $null
 $script:originalServiceAccount = ''   # Beim Einlesen gesetzter Referenzwert
 
 # ---------------------------------------------------------------------------
+# Funktion: IPv4-Adresse/Subnetzmaske pruefen (vier Oktette, keine Kurzformen)
+# ---------------------------------------------------------------------------
+function Test-IPv4Address {
+    param([string]$Value)
+    if (-not $Value -or $Value.Trim() -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return $false }
+    $addr = $null
+    return [System.Net.IPAddress]::TryParse($Value.Trim(), [ref]$addr)
+}
+
+# ---------------------------------------------------------------------------
 # Funktion: Daten laden und PropertyGrid befüllen
 # ---------------------------------------------------------------------------
 function Invoke-LoadData {
@@ -2619,6 +2645,7 @@ function Invoke-LoadData {
         $script:agConfig.ListenerName    = $rawInfo['ListenerName']
         $script:agConfig.ListenerIP      = $rawInfo['ListenerIP']
         $script:agConfig.ListenerPort    = [int]$rawInfo['ListenerPort']
+        $script:agConfig.ListenerSubnetMask = $rawInfo['ListenerSubnetMask']
         $script:agConfig.AGName          = $rawInfo['AGName']
         $script:agConfig.EndpointPort    = [int]$rawInfo['EndpointPort']
         $script:agConfig.FailoverMode    = $rawInfo['FailoverMode']
@@ -2716,6 +2743,22 @@ $btnOK.Add_Click({
         [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerNameRequired'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
         return
     }
+    # Manuell eingetragene Listener-Werte normalisieren
+    if ($script:agConfig.ListenerIP)         { $script:agConfig.ListenerIP         = $script:agConfig.ListenerIP.Trim() }
+    if ($script:agConfig.ListenerSubnetMask) { $script:agConfig.ListenerSubnetMask = $script:agConfig.ListenerSubnetMask.Trim() }
+    if ($script:agConfig.ListenerName)       { $script:agConfig.ListenerName       = $script:agConfig.ListenerName.Trim() }
+    if (-not (Test-IPv4Address $script:agConfig.ListenerIP)) {
+        [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerIPRequired'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
+        return
+    }
+    if ($script:agConfig.ListenerPort -lt 1 -or $script:agConfig.ListenerPort -gt 65535) {
+        [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerPortInvalid'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
+        return
+    }
+    if (-not (Test-IPv4Address $script:agConfig.ListenerSubnetMask)) {
+        [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerSubnetInvalid'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
+        return
+    }
     # Passwort nur prüfen wenn das Konto gegenüber dem Original geändert wurde
     $accountChanged = (
         $script:agConfig.ServiceAccount -and
@@ -2808,6 +2851,9 @@ $tsBtnReset.Add_Click({
     if (-not $script:agConfig -or -not $script:rawClusterInfo) { return }
     $script:agConfig.AGName       = $script:rawClusterInfo['AGName']
     $script:agConfig.ListenerName = $script:rawClusterInfo['ListenerName']
+    $script:agConfig.ListenerIP   = $script:rawClusterInfo['ListenerIP']
+    $script:agConfig.ListenerPort = [int]$script:rawClusterInfo['ListenerPort']
+    $script:agConfig.ListenerSubnetMask = $script:rawClusterInfo['ListenerSubnetMask']
     $propGrid.Refresh()
     Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoResetDone')
 })
@@ -2821,7 +2867,9 @@ $propGrid.Add_PropertyValueChanged({
     }
     if ($e.ChangedItem.PropertyDescriptor.Name -eq 'ListenerIP') {
         $ip = $script:agConfig.ListenerIP
-        if ($ip) {
+        if ($ip -and -not (Test-IPv4Address $ip)) {
+            Write-RtfWarn -Rtb $rtfBox -Msg (T 'MsgListenerIPRequired')
+        } elseif ($ip) {
             try {
                 $resolved = [System.Net.Dns]::GetHostEntry($ip)
                 Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoIPCheckOK' -f $ip, $resolved.HostName)

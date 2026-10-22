@@ -209,8 +209,9 @@
   <tr><th>Feld</th><th>Kategorie</th><th>Beschreibung</th></tr>
   <tr><td>AG-Name</td><td>3 – AG</td><td>Name der Availability Group (= WSFC-Rollenname)</td></tr>
   <tr><td>Listener-Name</td><td>3 – AG</td><td>DNS-Name des AG-Listeners</td></tr>
-  <tr><td>Listener-IP</td><td>3 – AG</td><td>IP-Adresse des Listeners (aus Cluster übernommen)</td></tr>
-  <tr><td>Listener-Port</td><td>3 – AG</td><td>TCP-Port des Listeners (Standard: 1433)</td></tr>
+  <tr><td>Listener-IP</td><td>3 – AG</td><td>IP-Adresse des Listeners (aus Cluster übernommen oder manuell eintragen, z.B. wenn die Cluster-Rolle vorher gelöscht wurde)</td></tr>
+  <tr><td>Listener-Port</td><td>3 – AG</td><td>TCP-Port des Listeners (Standard: 1433, editierbar)</td></tr>
+  <tr><td>Listener-Subnetzmaske</td><td>3 – AG</td><td>Subnetzmaske der Listener-IP (aus Cluster übernommen, Standard: 255.255.255.0)</td></tr>
   <tr><td>Endpoint-Port</td><td>3 – AG</td><td>HADR Endpoint Port (Standard: 5022)</td></tr>
   <tr><td>Failover-Modus</td><td>3 – AG</td><td><code>Automatic</code> = synchron mit auto. Failover; <code>Manual</code> = asynchron</td></tr>
   <tr><td>Backup-Präferenz</td><td>3 – AG</td><td><code>Primary</code> / <code>Secondary</code> / <code>PreferSecondary</code> / <code>None</code> (Standard: Primary)</td></tr>

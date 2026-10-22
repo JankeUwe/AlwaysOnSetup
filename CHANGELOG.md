@@ -1,5 +1,15 @@
 # AlwaysOnSetup — Changelog
 
+## [1.1.0] — 2026-10-22
+
+### Listener IP, port and subnet mask can be entered manually
+
+If the cluster role was deleted beforehand, the GUI finds no listener settings. `Listener-IP`
+and `Listener-Port` are now editable in the PropertyGrid (previously read-only), and a new
+`Listener-Subnetzmaske` field replaces the hard-coded `255.255.255.0` (read from the cluster
+IP resource when available). Before the start, the IP and subnet mask are checked for valid
+IPv4 format and the port for 1–65535; the Reset button also restores the detected listener values.
+
 ## [Unreleased] — 2026-06-06
 
 ### Fix: SA-rename issue in endpoint and job creation
