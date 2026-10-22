@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.2.1'
+$script:Version = '1.2.2'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -94,6 +94,9 @@ $script:LangStrings = @{
         'BtnOK'                              = 'OK  –  Konfiguration starten'
         'BtnClose'                           = 'Schließen'
         'BtnContinue'                        = '▶  Weiter'
+        'BtnCopySql'                         = 'Login-T-SQL kopieren'
+        'InfoSqlCopied'                      = '  T-SQL für das Setup-Login liegt in der Zwischenablage (Login: {0}).'
+        'WarnSqlCopyFailed'                  = '  T-SQL konnte nicht in die Zwischenablage kopiert werden: {0}'
         'BtnClearLog'                        = 'Protokoll leeren'
         'BtnSaveLog'                         = '💾 Protokoll speichern'
 
@@ -344,6 +347,9 @@ $script:LangStrings = @{
         'BtnOK'                              = 'OK  –  Start Configuration'
         'BtnClose'                           = 'Close'
         'BtnContinue'                        = '▶  Continue'
+        'BtnCopySql'                         = 'Copy login T-SQL'
+        'InfoSqlCopied'                      = '  T-SQL for the setup login copied to the clipboard (login: {0}).'
+        'WarnSqlCopyFailed'                  = '  T-SQL could not be copied to the clipboard: {0}'
         'BtnClearLog'                        = 'Clear Log'
         'BtnSaveLog'                         = '💾 Save Log'
 
@@ -607,6 +613,7 @@ function Update-UILanguage {
     $btnOK.Text             = T 'BtnOK'
     $btnClose.Text          = T 'BtnClose'
     $btnContinue.Text       = T 'BtnContinue'
+    $btnCopySql.Text        = T 'BtnCopySql'
     $btnClearLog.Text       = T 'BtnClearLog'
     $btnSaveLog.Text        = T 'BtnSaveLog'
 }
@@ -1290,6 +1297,19 @@ function Get-ValidSysAdminLogin {
 $script:setupLoginName  = $null
 $script:setupLoginNodes = @()
 $script:setupLoginCred  = $null   # Wird von Start-AlwaysOnConfiguration nach Weiter-Klick befüllt
+$script:setupLoginSql   = ''      # T-SQL-Block für das manuelle Anlegen (Zwischenablage)
+
+function Copy-SetupSqlToClipboard {
+    param([System.Windows.Forms.RichTextBox]$Rtb)
+    if (-not $script:setupLoginSql) { return }
+    try {
+        # Clipboard braucht STA – powershell.exe 5.1 läuft standardmäßig als STA
+        [System.Windows.Forms.Clipboard]::SetText($script:setupLoginSql)
+        Write-RtfSuccess -Rtb $Rtb -Msg (T 'InfoSqlCopied' -f $script:setupLoginName)
+    } catch {
+        Write-RtfWarn -Rtb $Rtb -Msg (T 'WarnSqlCopyFailed' -f $_.Exception.Message)
+    }
+}
 
 function Enable-SqlMixedMode {
     param(
@@ -1481,6 +1501,10 @@ END
     $script:setupLoginCred   = $loginCred
     $script:pbmDisabledNodes = $allInstances
 
+    # T-SQL direkt in die Zwischenablage (RDP überträgt sie auf die Nodes)
+    $script:setupLoginSql = $createSql
+    Copy-SetupSqlToClipboard -Rtb $Rtb
+
     return '__WAIT__'   # Signal an den Caller: pausieren und auf Weiter warten
 }
 
@@ -1663,6 +1687,7 @@ function Start-AlwaysOnConfiguration {
         # Anwender muss Login manuell anlegen → "Weiter"-Button einblenden
         $btnContinue.Visible = $true
         $btnContinue.Enabled = $true
+        $btnCopySql.Visible  = $true
         $statusLabel.Text    = 'Bitte SQL-Login anlegen und dann "Weiter" klicken.'
         # Konfiguration wird durch den Weiter-Button-Handler fortgesetzt
         return
@@ -2765,6 +2790,16 @@ $btnSaveLog.Location = New-Object System.Drawing.Point(154, 5)
 $btnSaveLog.FlatStyle = 'Flat'
 $panelRtfButtons.Controls.Add($btnSaveLog)
 
+# Nur sichtbar solange das Setup-Login manuell angelegt werden muss
+$btnCopySql = New-Object System.Windows.Forms.Button
+$btnCopySql.Size      = New-Object System.Drawing.Size(170, 32)
+$btnCopySql.Location  = New-Object System.Drawing.Point(322, 5)
+$btnCopySql.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 80)
+$btnCopySql.ForeColor = [System.Drawing.Color]::White
+$btnCopySql.FlatStyle = 'Flat'
+$btnCopySql.Visible   = $false
+$panelRtfButtons.Controls.Add($btnCopySql)
+
 # ---------------------------------------------------------------------------
 # Status-Label unten
 # ---------------------------------------------------------------------------
@@ -2994,11 +3029,15 @@ $btnContinue.Add_Click({
 
     # Alle Nodes erreichbar → Konfiguration fortsetzen
     $btnContinue.Visible = $false
+    $btnCopySql.Visible  = $false
     $statusLabel.Text    = T 'StatusConfigRunning'
     Write-RtfSuccess -Rtb $rtfBox -Msg (T 'InfoSQLAuthOnAllSuccess')
 
     Invoke-AlwaysOnSteps -Config $script:agConfig -Rtb $rtfBox -BtnOK $btnOK -SqlCred $cred
 })
+
+# Login-T-SQL erneut in die Zwischenablage (z.B. für den nächsten Node)
+$btnCopySql.Add_Click({ Copy-SetupSqlToClipboard -Rtb $rtfBox })
 
 # Protokoll leeren
 $btnClearLog.Add_Click({ $rtfBox.Clear() })

@@ -1,5 +1,14 @@
 # AlwaysOnSetup — Changelog
 
+## [1.2.2] — 2026-10-22
+
+### Setup-login T-SQL goes straight to the clipboard
+
+When the temporary setup login has to be created manually, the T-SQL block is now copied to the
+clipboard as soon as it is shown, ready to paste into SSMS on the node (RDP passes the clipboard
+through). A new button "Login-T-SQL kopieren" below the log copies it again for the next node;
+it is shown together with "Weiter" and hidden once the setup continues.
+
 ## [1.2.1] — 2026-10-22
 
 ### Temporary setup login complies with the "New Login" password policy
