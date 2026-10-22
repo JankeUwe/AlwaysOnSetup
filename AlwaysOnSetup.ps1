@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.1'
+$script:Version = '1.3.2'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -2171,6 +2171,31 @@ CREATE ENDPOINT [HADR_Endpoint]
     # 5. Test-Datenbank auf Primary anlegen                               #
     # ------------------------------------------------------------------ #
     Write-RtfSection -Rtb $Rtb -Msg "Schritt 5: Testdatenbank '$($Config.TestDatabase)' erstellen"
+
+    # Reste eines fehlgeschlagenen Versuchs: Testdatenbank, die zu keiner AG (mehr) gehört
+    # und nicht ONLINE ist (typisch: Secondary im RESTORING), blockiert Autoseeding bzw.
+    # Neuanlage und wird entfernt. ONLINE-Datenbanken außerhalb einer AG werden auf
+    # Secondaries nur gemeldet, nie gelöscht.
+    foreach ($nc in $activeNodes) {
+        try {
+            $leftover = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -EnableException `
+                -Query "SELECT state_desc AS state, CASE WHEN group_database_id IS NULL THEN 0 ELSE 1 END AS in_ag FROM sys.databases WHERE name = N'$($Config.TestDatabase)'"
+            if (-not $leftover) { continue }
+            if ($leftover.in_ag -eq 1) {
+                Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): '$($Config.TestDatabase)' gehört zu einer AG ($($leftover.state)) – unverändert."
+            } elseif ($leftover.state -ne 'ONLINE') {
+                Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): '$($Config.TestDatabase)' steht auf $($leftover.state) ohne AG (Rest eines fehlgeschlagenen Versuchs) – wird entfernt ..."
+                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -EnableException `
+                    -Query "DROP DATABASE [$($Config.TestDatabase)];"
+                Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): '$($Config.TestDatabase)' entfernt."
+            } elseif ($nc.SqlInstance -ne $primaryInstance) {
+                Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): '$($Config.TestDatabase)' ist ONLINE, aber in keiner AG – blockiert das Autoseeding. Bitte prüfen und ggf. manuell löschen."
+            }
+        } catch {
+            Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): Prüfung/Entfernen von '$($Config.TestDatabase)' fehlgeschlagen – $_"
+        }
+    }
+
     try {
         $dbCheck = Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred `
             -Query "SELECT name FROM sys.databases WHERE name = N'$($Config.TestDatabase)'" `

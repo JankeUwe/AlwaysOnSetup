@@ -153,6 +153,7 @@
   <tr><td>5</td><td>Testdatenbank</td><td>Datenbank anlegen, Recovery-Modell FULL setzen, initiales Full-Backup erstellen</td></tr>
   <tr><td>6</td><td>Availability Group</td><td>AG per reinem T-SQL (<code>sqlcmd</code>) anlegen, Replicas beitreten, Autoseed aktivieren</td></tr>
   <tr><td>7</td><td>Listener</td><td>AG-Listener mit IP-Adresse und Port per <code>ALTER AVAILABILITY GROUP</code></td></tr>
+  <tr><td>&ndash;</td><td>Reste bereinigen</td><td>Vor dem Anlegen der Testdatenbank: liegt sie auf einem Node ohne AG und nicht ONLINE (z.B. Secondary im RESTORING nach abgebrochenem Versuch), wird sie gelöscht; ONLINE ohne AG auf einem Secondary wird nur gemeldet</td></tr>
   <tr><td>8</td><td>Status</td><td>Autoseeding der Testdatenbank abwarten (max. 3 Minuten) und Ergebnis je Secondary melden, bei Fehler mit Grund aus <code>sys.dm_hadr_automatic_seeding</code>; AG-Synchronisierungsstatus und Replica-Rollen per DMV ausgeben</td></tr>
   <tr><td>9</td><td>SPN-Prüfung</td><td>Fehlende MSSQLSvc-SPNs erkennen, setspn-Befehle als Textdatei für das AD-Team exportieren</td></tr>
 </table>

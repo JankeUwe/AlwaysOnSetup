@@ -1,5 +1,15 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.2] — 2026-10-22
+
+### Leftover test database from a failed run is removed
+
+Before the test database is created, every node is checked for a database with that name.
+If it belongs to no availability group and is not ONLINE (typically a secondary left in
+RESTORING by an aborted seeding or join), it is dropped, because it would block automatic
+seeding or the new database. A database that belongs to an AG is left alone. An ONLINE database
+outside an AG on a secondary is only reported, never dropped.
+
 ## [1.3.1] — 2026-10-22
 
 ### Autoseeding of the test database is checked
