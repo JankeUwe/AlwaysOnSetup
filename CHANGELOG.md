@@ -1,5 +1,22 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.0] — 2026-10-22
+
+### Windows-auth-only instances are restored after the setup
+
+On the SQL-login path, a node that allows Windows authentication only is switched to mixed mode
+for the setup (service restart). Before, it stayed in mixed mode. Now the tool remembers which
+nodes it switched and sets them back to Windows authentication only at the end, after the temporary
+login is dropped. Secondaries restart first, the primary last; if the primary restart triggers an
+automatic failover, the AG is failed back to the original primary once it is synchronized.
+
+- **Named instances:** registry path (via `Instance Names\SQL`) and service name (`MSSQL$<name>`)
+  are derived from the instance instead of being fixed to `MSSQLSERVER`. Dependent services
+  (SQL Agent) are started again after the restart.
+- **Clear abort:** if mixed mode cannot be enabled on a node, the setup stops with a message
+  (set SPNs or enable mixed mode manually) instead of ending in a Continue loop whose SQL login
+  can never connect. Nodes already switched are set back immediately.
+
 ## [1.2.2] — 2026-10-22
 
 ### Setup-login T-SQL goes straight to the clipboard
