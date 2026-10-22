@@ -1,5 +1,15 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.1] — 2026-10-22
+
+### Autoseeding of the test database is checked
+
+The status step now waits up to 3 minutes for the automatic seeding of the test database and
+reports per secondary: distributed (SYNCHRONIZED/SYNCHRONIZING), seeding failed with the reason
+from `sys.dm_hadr_automatic_seeding` (`failure_state_desc`, error code), or no seeding started,
+which usually means no endpoint connection between the replicas. Before, the step took a single
+status snapshot after 5 seconds and could only show `NOT_HEALTHY` without a reason.
+
 ## [1.3.0] — 2026-10-22
 
 ### Windows-auth-only instances are restored after the setup

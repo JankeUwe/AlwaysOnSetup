@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.0'
+$script:Version = '1.3.1'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -2567,7 +2567,55 @@ foreach (`$dest in `$otherInstances) {
     # 9. Abschlussstatus per T-SQL                                        #
     # ------------------------------------------------------------------ #
     Write-RtfSection -Rtb $Rtb -Msg 'Schritt 9: Konfiguration abgeschlossen – Status'
-    Start-Sleep -Seconds 5   # AG-DMVs kurz Zeit geben sich zu füllen
+
+    # Autoseeding der Testdatenbank abwarten und Ergebnis je Secondary melden.
+    # Fertig = Secondary SYNCHRONIZED/SYNCHRONIZING oder Seeding FAILED (mit Grund).
+    Write-RtfInfo -Rtb $Rtb -Msg "  Warte auf Autoseeding von '$($Config.TestDatabase)' (max. 3 Minuten) ..."
+    $seedSql = @"
+SELECT ar.replica_server_name AS replica,
+       drs.synchronization_state_desc AS sync_state,
+       seed.current_state AS seed_state, seed.failure_state_desc AS seed_failure, seed.error_code AS seed_error
+FROM sys.availability_groups ag
+JOIN sys.availability_replicas ar ON ar.group_id = ag.group_id
+JOIN sys.dm_hadr_availability_replica_states ars ON ars.replica_id = ar.replica_id AND ars.is_local = 0
+JOIN sys.availability_databases_cluster adc ON adc.group_id = ag.group_id AND adc.database_name = N'$($Config.TestDatabase)'
+LEFT JOIN sys.dm_hadr_database_replica_states drs ON drs.replica_id = ar.replica_id AND drs.group_database_id = adc.group_database_id
+OUTER APPLY (SELECT TOP 1 s.current_state, s.failure_state_desc, s.error_code
+             FROM sys.dm_hadr_automatic_seeding s
+             WHERE s.ag_id = ag.group_id AND s.ag_db_id = adc.group_database_id AND s.ag_remote_replica_id = ar.replica_id
+             ORDER BY s.start_time DESC) seed
+WHERE ag.name = N'$($Config.AGName)'
+"@
+    $seedRows = @()
+    $deadline = (Get-Date).AddMinutes(3)
+    do {
+        Start-Sleep -Seconds 5
+        try {
+            $seedRows = @(Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -EnableException -Query $seedSql)
+        } catch { $seedRows = @() }
+        $pending = @($seedRows | Where-Object {
+            "$($_.sync_state)" -notin @('SYNCHRONIZED', 'SYNCHRONIZING') -and "$($_.seed_state)" -ne 'FAILED'
+        })
+    } while (($seedRows.Count -eq 0 -or $pending.Count -gt 0) -and (Get-Date) -lt $deadline)
+
+    if ($seedRows.Count -eq 0) {
+        Write-RtfWarn -Rtb $Rtb -Msg "  Seeding-Status nicht abfragbar – ist '$($Config.TestDatabase)' Teil der AG '$($Config.AGName)'?"
+    }
+    foreach ($r in $seedRows) {
+        if ("$($r.sync_state)" -in @('SYNCHRONIZED', 'SYNCHRONIZING')) {
+            Write-RtfSuccess -Rtb $Rtb -Msg "  $($r.replica): '$($Config.TestDatabase)' per Autoseed verteilt – $($r.sync_state)."
+        } elseif ("$($r.seed_state)" -eq 'FAILED') {
+            Write-RtfError -Rtb $Rtb -Msg "  $($r.replica): Autoseeding fehlgeschlagen – $($r.seed_failure) (Fehler $($r.seed_error))."
+            Write-RtfError -Rtb $Rtb -Msg "    Prüfen: Endpoint-Verbindung (Schritt 4), gleiche Daten-/Log-Pfade auf dem Secondary, Errorlog des Secondary."
+        } else {
+            $state = if ("$($r.seed_state)") { "$($r.seed_state)" } else { 'kein Seeding gestartet' }
+            Write-RtfWarn -Rtb $Rtb -Msg "  $($r.replica): nach 3 Minuten nicht synchron – Seeding: $state, Sync: $(if ("$($r.sync_state)") { $r.sync_state } else { '-' })."
+            if ($state -eq 'kein Seeding gestartet') {
+                Write-RtfWarn -Rtb $Rtb -Msg "    Meist keine Endpoint-Verbindung zwischen den Replicas (Schritt 4) oder Secondary nicht beigetreten."
+            }
+        }
+    }
+
     try {
         $agStatus = Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred `
             -Query "SELECT ag.name, ags.primary_replica, ags.synchronization_health_desc
