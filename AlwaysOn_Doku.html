@@ -239,7 +239,7 @@
 
 <div class="box box-warn">
   <div class="box-title">⚠ SPNs vor dem Setup setzen – dringend empfohlen</div>
-  Wenn SPNs fehlen, pausiert das Tool und fordert den Anwender auf, ein temporäres SQL-Login manuell per SSMS lokal auf jedem betroffenen Node anzulegen. Dieser Schritt entfällt vollständig, wenn die SPNs bereits im Active Directory registriert sind.
+  Wenn SPNs fehlen, ist zu den entfernten Nodes nur NTLM möglich. Das Tool legt dann selbst ein temporäres SQL-Login an und führt das Setup darüber aus. Nur wenn ein Node per Windows-Auth gar nicht erreichbar ist, pausiert es und fordert den Anwender auf, das Login manuell per SSMS anzulegen. Mit gesetzten SPNs läuft das Setup per Kerberos ohne temporäres Login.
 </div>
 
 <h2>Auswirkung fehlender SPNs</h2>
@@ -253,8 +253,8 @@
   </tr>
   <tr>
     <td>SPNs fehlen <strong style="color:#c0392b">✗</strong></td>
-    <td>SSPI-Fehler auf betroffenen Nodes</td>
-    <td>Tool pausiert → T-SQL-Block anzeigen → manuell ausführen → Weiter → Fortsetzung per SQL-Auth</td>
+    <td>Nur NTLM zu den entfernten Nodes (oder SSPI-Fehler)</td>
+    <td>Temporäres SQL-Login wird automatisch angelegt → Setup per SQL-Auth. Node per Windows-Auth nicht erreichbar: T-SQL-Block anzeigen → manuell ausführen → Weiter</td>
   </tr>
 </table>
 
@@ -282,10 +282,10 @@
 <h2>Ablauf wenn SPNs fehlen</h2>
 
 <div class="steps">
-  <div class="step-row"><div class="step-num">1</div><div class="step-body">Tool erkennt automatisch welche Nodes nicht per Kerberos erreichbar sind</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-body">T-SQL-Block zur manuellen Login-Anlage wird im Log angezeigt (fertig zum Kopieren)</div></div>
-  <div class="step-row"><div class="step-num">3</div><div class="step-body">Anwender führt das T-SQL per SSMS lokal auf jedem betroffenen Node aus (per RDP)</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-body">Klick auf <strong>Weiter</strong> – Tool prüft SQL-Auth-Verbindung auf allen Nodes</div></div>
+  <div class="step-row"><div class="step-num">1</div><div class="step-body">Tool prüft per <code>sys.dm_exec_connections.auth_scheme</code>, ob die entfernten Nodes per Kerberos angemeldet sind</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-body">Nur NTLM (oder PropertyGrid <strong>Setup-Authentifizierung = SQL-Login</strong>): Tool aktiviert bei Bedarf Mixed-Mode, deaktiviert die Passwort-Policy und legt das temporäre sysadmin-Login selbst an</div></div>
+  <div class="step-row"><div class="step-num">3</div><div class="step-body">Alle Schritte laufen über dieses SQL-Login</div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-body">Nur wenn ein Node per Windows-Auth gar nicht erreichbar ist: T-SQL-Block im Log manuell per SSMS ausführen, dann <strong>Weiter</strong></div></div>
   <div class="step-row"><div class="step-num">5</div><div class="step-body">Temporäres Login wird am Ende automatisch entfernt, Policy reaktiviert</div></div>
 </div>
 
@@ -361,7 +361,7 @@
 <h2>Verbindungsstrategie</h2>
 
 <p><strong>Einlesen:</strong> Windows-Auth per WMI für Dienst-Informationen; T-SQL für HADR-Status.<br>
-<strong>Konfiguration:</strong> Windows-Auth (Kerberos) auf allen Nodes testen. Bei SSPI-Fehler → temporäres SQL-Login mit kryptografisch zufälligem Passwort (28 Zeichen, <code>RNGCryptoServiceProvider</code>).<br>
+<strong>Konfiguration:</strong> Windows-Auth auf allen Nodes testen, zu entfernten Nodes ist Kerberos Pflicht. Nur NTLM oder SSPI-Fehler → temporäres SQL-Login mit kryptografisch zufälligem Passwort (28 Zeichen, <code>RNGCryptoServiceProvider</code>).<br>
 <strong>Cleanup:</strong> Temporäres Login nach Abschluss auf allen Nodes automatisch gelöscht, Policy reaktiviert.</p>
 
 <h2>AG-Anlage per sqlcmd</h2>

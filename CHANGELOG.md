@@ -1,5 +1,34 @@
 # AlwaysOnSetup — Changelog
 
+## [1.2.0] — 2026-10-22
+
+### Setup runs over a temporary SQL login when Kerberos is not available
+
+Windows authentication to the remote nodes now has to use Kerberos
+(`sys.dm_exec_connections.auth_scheme`). Before, an NTLM connection counted as OK, so a cluster
+without SPNs ran over Windows auth and failed later. Without Kerberos, or with the new
+PropertyGrid option `Setup-Authentifizierung = SQL-Login`, the tool now creates the temporary
+sysadmin SQL login itself over the working Windows connection (mixed mode is enabled if needed,
+the PBM password policy is disabled for the run) and runs every step with it. The manual T-SQL
+block with the Continue button is only used when a node cannot be reached with Windows auth at all.
+
+### Fixes from a failed run without SPNs
+
+- **Listener detection:** the cluster core role (`Cluster Group`) and `Available Storage` are no
+  longer taken as the listener. Before, when the AG role had been deleted, the cluster name and
+  cluster IP were used as listener and AG name, and `ADD LISTENER` failed with WSFC error 5057.
+  The OK check now rejects a listener name equal to the cluster name.
+- **Endpoint login (step 4):** the PBM policy is also disabled around `CREATE LOGIN ... FROM WINDOWS`
+  in the Kerberos path, where its trigger had rolled the statement back. The policy is only
+  re-enabled on nodes where the tool disabled it.
+- **Certificate fallback:** certificate files now go to `<instance default backup path>\HADR_Certs`
+  instead of `C:\System\Certs`, which the SQL service account could not write (`xp_create_subdir`
+  error 5). An old `.cer` file is removed first, and the setup runs once for all nodes instead of once per node.
+- **MODIFY REPLICA:** split into one statement per option (`Incorrect syntax near ','` before);
+  `AVAILABILITY_MODE` and `FAILOVER_MODE` are set in the order SQL Server requires.
+- **AG sync job owner (step 8):** `sa` is found by SID `0x01` (works when renamed); the fallback
+  skips Windows groups, which SQL Agent rejects as job owner.
+
 ## [1.1.0] — 2026-10-22
 
 ### Listener IP, port and subnet mask can be entered manually

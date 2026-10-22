@@ -8,7 +8,7 @@ Tested on: Windows Server 2022 / SQL Server 2022
 
 Features
 Automatic Cluster Discovery: Reads cluster and SQL Server information automatically and displays it in the PropertyGrid
-Kerberos/SQL Auth Fallback: Prefers Windows authentication (Kerberos) — automatically falls back to temporary SQL login if SPNs are missing
+Kerberos/SQL Auth Fallback: Uses Windows authentication only when the remote nodes authenticate over Kerberos; with NTLM only (missing SPNs) or `Setup-Authentifizierung = SQL-Login` it creates a temporary SQL login itself and runs the setup with it
 Temporary Login Management: Creates random SQL login, displays T-SQL block for manual execution, automatically removes login after completion
 WSFC Cleanup: Removes orphaned WSFC group entries
 SPN Validation: Generates AD team request file with required setspn commands
@@ -35,7 +35,7 @@ Process
 Script automatically detects WSFC cluster
 SQL Server instances on all nodes are identified
 Adjust configuration parameters in the PropertyGrid
-Kerberos connection to all nodes is tested — on error: SQL fallback with T-SQL block display
+Kerberos connection to all nodes is tested — NTLM only: temporary SQL login created automatically; node not reachable at all: T-SQL block for manual execution
 After confirmation: fully automated AG configuration
 Temporary login is removed
 Files

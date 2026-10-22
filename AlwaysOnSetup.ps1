@@ -9,10 +9,13 @@
     und führt nach Bestätigung alle Konfigurationsschritte durch.
 
     Verbindungsstrategie:
-      - Windows-Auth (Kerberos) wird bevorzugt auf allen Nodes getestet.
-      - Schlägt Kerberos auf einem Node fehl (fehlende SPNs), generiert das Script
-        ein temporäres SQL-Login mit zufälligem Passwort, zeigt den T-SQL-Block
-        zur manuellen Ausführung an und wartet auf Bestätigung ("Weiter"-Button).
+      - Windows-Auth wird auf allen Nodes getestet; zu entfernten Nodes muss die
+        Anmeldung per KERBEROS laufen (sys.dm_exec_connections.auth_scheme).
+      - Nur NTLM (fehlende SPNs) oder Setup-Authentifizierung 'SQL-Login': das Script
+        legt per Windows-Auth selbst ein temporäres sysadmin-SQL-Login an (PBM-Policy
+        dabei deaktiviert) und führt alle Schritte damit aus.
+      - Node per Windows-Auth gar nicht erreichbar: T-SQL-Block zur manuellen
+        Ausführung, dann "Weiter"-Button.
       - Das temporäre Login wird nach Abschluss automatisch entfernt.
 
     EMPFEHLUNG: SPNs vor dem Setup setzen – spart den manuellen Schritt!
@@ -54,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.1.0'
+$script:Version = '1.2.0'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -147,7 +150,7 @@ $script:LangStrings = @{
         'InfoClusterGroups'                  = 'Cluster-Rollen: {0}'
         'InfoReadComplete'                   = 'Einlesen abgeschlossen.'
         'InfoWindowsAuthOK'                  = '  Windows-Auth ''{0}'': OK'
-        'InfoAuthSuccess'                    = 'Authentifizierung: Windows-Auth (Kerberos/NTLM) auf allen Nodes OK'
+        'InfoAuthSuccess'                    = 'Authentifizierung: Windows-Auth (Kerberos) auf allen Nodes OK'
         'InfoAccountFound'                   = 'Konto gefunden: {0}  ({1})'
         'InfoADCheckFor'                     = 'AD-Prüfung für Konto ''{0}'' ...'
         'InfoServicesChanged'                = '  {0}: Konto wird von ''{1}'' auf ''{2}'' geändert ...'
@@ -303,6 +306,7 @@ $script:LangStrings = @{
         'MsgListenerNameRequired'            = 'Bitte einen Listener-Namen eingeben. Keine Cluster-Rolle gefunden - manuell eintragen!'
         'MsgListenerIPRequired'              = 'Bitte eine gueltige Listener-IP (IPv4) eingeben. Keine Cluster-Rolle gefunden - manuell eintragen!'
         'MsgListenerPortInvalid'             = 'Listener-Port muss zwischen 1 und 65535 liegen.'
+        'MsgListenerIsClusterName'           = 'Listener-Name darf nicht der Cluster-Name sein. Bitte eigenen Listener-Namen und eine freie IP eintragen.'
         'MsgListenerSubnetInvalid'           = 'Bitte eine gueltige Subnetzmaske eingeben (z.B. 255.255.255.0).'
         'BtnReset'                           = 'Zuruecksetzen'
         'BtnResetTooltip'                    = 'AG-Name und Listener-Daten auf erkannte Werte zuruecksetzen'
@@ -396,7 +400,7 @@ $script:LangStrings = @{
         'InfoClusterGroups'                  = 'Cluster roles: {0}'
         'InfoReadComplete'                   = 'Read complete.'
         'InfoWindowsAuthOK'                  = '  Windows auth ''{0}'': OK'
-        'InfoAuthSuccess'                    = 'Authentication: Windows auth (Kerberos/NTLM) on all nodes OK'
+        'InfoAuthSuccess'                    = 'Authentication: Windows auth (Kerberos) on all nodes OK'
         'InfoAccountFound'                   = 'Account found: {0}  ({1})'
         'InfoADCheckFor'                     = 'AD check for account ''{0}'' ...'
         'InfoServicesChanged'                = '  {0}: Changing account from ''{1}'' to ''{2}'' ...'
@@ -552,6 +556,7 @@ $script:LangStrings = @{
         'MsgListenerNameRequired'            = 'Please enter a listener name. No cluster role found - enter manually!'
         'MsgListenerIPRequired'              = 'Please enter a valid listener IP (IPv4). No cluster role found - enter manually!'
         'MsgListenerPortInvalid'             = 'Listener port must be between 1 and 65535.'
+        'MsgListenerIsClusterName'           = 'Listener name must not be the cluster name. Please enter a separate listener name and a free IP.'
         'MsgListenerSubnetInvalid'           = 'Please enter a valid subnet mask (e.g. 255.255.255.0).'
         'BtnReset'                           = 'Reset'
         'BtnResetTooltip'                    = 'Reset AG name and listener settings to detected values'
@@ -839,6 +844,14 @@ function Get-ClusterAndSqlInfo {
         foreach ($role in $roles) {
             $roleName = $role.Name.Trim()  # Trim cluster role names to avoid sync issues
 
+            # Kernrolle ('Cluster Group' = Cluster-Name/-IP) und 'Available Storage' sind nie
+            # ein Listener. Sonst würde bei gelöschter AG-Rolle der Cluster-Name als Listener
+            # und AG-Name übernommen (ADD LISTENER scheitert dann mit WSFC-Fehler 5057).
+            $groupType = if ($role.PSObject.Properties['GroupType']) { "$($role.GroupType)" } else { '' }
+            $isCore    = $role.PSObject.Properties['IsCoreGroup'] -and $role.IsCoreGroup
+            if ($isCore -or $groupType -in @('Cluster', 'AvailableStorage') -or
+                $roleName -in @('Cluster Group', 'Available Storage')) { continue }
+
             $netNameRes = Get-ClusterResource | Where-Object {
                 $_.OwnerGroup -eq $roleName -and $_.ResourceType -like '*Network Name*'
             } | Select-Object -First 1
@@ -999,6 +1012,14 @@ public class FailoverModeConverter : StringConverter {
     }
 }
 
+public class AuthModeConverter : StringConverter {
+    public override bool GetStandardValuesSupported(ITypeDescriptorContext ctx) { return true; }
+    public override bool GetStandardValuesExclusive(ITypeDescriptorContext ctx) { return true; }
+    public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext ctx) {
+        return new StandardValuesCollection(new[] { "Auto", "SQL-Login" });
+    }
+}
+
 public class BackupPreferenceConverter : StringConverter {
     public override bool GetStandardValuesSupported(ITypeDescriptorContext ctx) { return true; }
     public override bool GetStandardValuesExclusive(ITypeDescriptorContext ctx) { return true; }
@@ -1095,6 +1116,13 @@ public class AgConfig {
     [PasswordPropertyText(true)]
     public string ServicePassword { get; set; }
 
+    // ---- Setup-Verbindung ----
+    [Category("5 - Setup-Verbindung")]
+    [DisplayName("Setup-Authentifizierung")]
+    [Description("Auto = Windows-Auth nur wenn Kerberos zu allen entfernten Nodes funktioniert, sonst temporaeres SQL-Login (wird am Ende entfernt). SQL-Login = immer temporaeres SQL-Login.")]
+    [TypeConverter(typeof(AuthModeConverter))]
+    public string AuthMode { get; set; }
+
 }
 '@
 
@@ -1108,6 +1136,8 @@ $script:pbmPolicyName = 'New Login_Enforce Passwort Policy'
 # $Enable = $true → aktivieren, $false → deaktivieren
 # Verwendet $sqlCred wenn übergeben, sonst Windows-Auth
 # ---------------------------------------------------------------------------
+$script:pbmDisabledNodes = @()   # Instanzen, auf denen das Tool die Policy deaktiviert hat
+
 function Set-PbmPolicy {
     param(
         [bool]$Enable,
@@ -1122,12 +1152,27 @@ function Set-PbmPolicy {
     foreach ($nc in $Nodes) {
         $instance   = if ($nc -is [string]) { $nc } else { $nc.SqlInstance }
         $targetHost = ($instance -split '\\')[0]
-        $done = $false
 
+        # Nur wieder aktivieren, was das Tool selbst deaktiviert hat
+        if ($Enable -and $script:pbmDisabledNodes -notcontains $instance) { continue }
+
+        # Nur deaktivieren, wenn die Policy existiert und aktiv ist
+        if (-not $Enable) {
+            try {
+                $pol = Invoke-DbaQuery -SqlInstance $instance -SqlCredential $SqlCred -Database msdb -EnableException `
+                    -Query "SELECT CAST(is_enabled AS int) AS e FROM msdb.dbo.syspolicy_policies WHERE name = N'$($script:pbmPolicyName)'"
+                if (-not $pol -or $pol.e -ne 1) {
+                    Write-RtfInfo -Rtb $Rtb -Msg "  $($instance): Policy '$($script:pbmPolicyName)' nicht vorhanden oder inaktiv – nichts zu tun."
+                    continue
+                }
+            } catch { }
+        }
+
+        $done = $false
         # Erst per SQL-Auth oder Windows-Auth (je nach $SqlCred)
         try {
             Invoke-DbaQuery -SqlInstance $instance -SqlCredential $SqlCred `
-                -Database msdb -Query $query -ErrorAction Stop
+                -Database msdb -Query $query -EnableException
             Write-RtfInfo -Rtb $Rtb -Msg "  $($instance): Policy '$($script:pbmPolicyName)' $action."
             $done = $true
         } catch { }
@@ -1140,8 +1185,17 @@ function Set-PbmPolicy {
                     sqlcmd -S $inst -E -d msdb -Q $q 2>&1 | Out-Null
                 } -ArgumentList $instance, $query
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($instance): Policy '$($script:pbmPolicyName)' $action (via PSRemoting)."
+                $done = $true
             } catch {
                 Write-RtfWarn -Rtb $Rtb -Msg "  $($instance): Policy '$($script:pbmPolicyName)' konnte nicht $action werden."
+            }
+        }
+
+        if ($done) {
+            if ($Enable) {
+                $script:pbmDisabledNodes = @($script:pbmDisabledNodes | Where-Object { $_ -ne $instance })
+            } elseif ($script:pbmDisabledNodes -notcontains $instance) {
+                $script:pbmDisabledNodes += $instance
             }
         }
     }
@@ -1195,29 +1249,27 @@ function Get-ValidSysAdminLogin {
         [string]$PreferredLogin  # z.B. ServiceAccount wenn bekannt
     )
 
-    # Wenn PreferredLogin gesetzt, versuche das zuerst
-    if ($PreferredLogin -and $PreferredLogin -ne 'sa') {
+    # PreferredLogin nur, wenn es als Login existiert und sysadmin ist
+    if ($PreferredLogin) {
         try {
-            $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential `
-                -Query "SELECT name FROM sys.server_principals WHERE name = N'$PreferredLogin' AND is_srvrolemember('sysadmin', name) = 1" `
-                -ErrorAction SilentlyContinue
+            $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential -EnableException `
+                -Query "SELECT name FROM sys.server_principals WHERE name = N'$PreferredLogin' AND IS_SRVROLEMEMBER('sysadmin', name) = 1"
             if ($result) { return $PreferredLogin }
         } catch { }
     }
 
-    # Versuche 'sa' zu finden (ist häufig noch vorhanden, auch wenn umbenannt)
+    # 'sa' über die SID 0x01 – liefert den aktuellen Namen auch wenn umbenannt.
+    # Deaktiviert ist als Job-/Endpoint-Owner unkritisch.
     try {
-        $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential `
-            -Query "SELECT name FROM sys.server_principals WHERE name = N'sa' AND is_srvrolemember('sysadmin', name) = 1" `
-            -ErrorAction SilentlyContinue
-        if ($result) { return 'sa' }
+        $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential -EnableException `
+            -Query "SELECT name FROM sys.server_principals WHERE sid = 0x01"
+        if ($result) { return $result.name }
     } catch { }
 
-    # Fallback: Erster verfügbarer sysadmin
+    # Fallback: erster sysadmin-Login, keine Windows-Gruppe (Agent lehnt Gruppen als Owner ab)
     try {
-        $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential `
-            -Query "SELECT TOP 1 name FROM sys.server_principals WHERE is_srvrolemember('sysadmin', name) = 1 AND name NOT LIKE '##%' ORDER BY name" `
-            -ErrorAction SilentlyContinue
+        $result = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCredential -EnableException `
+            -Query "SELECT TOP 1 name FROM sys.server_principals WHERE type IN ('S','U') AND IS_SRVROLEMEMBER('sysadmin', name) = 1 AND name NOT LIKE '##%' AND name NOT LIKE 'AGSetup[_]%' ORDER BY name"
         if ($result) { return $result.name }
     } catch { }
 
@@ -1239,44 +1291,12 @@ $script:setupLoginName  = $null
 $script:setupLoginNodes = @()
 $script:setupLoginCred  = $null   # Wird von Start-AlwaysOnConfiguration nach Weiter-Klick befüllt
 
-function Initialize-SetupCredential {
+function Enable-SqlMixedMode {
     param(
-        [string]$PrimaryInstance,
-        [object[]]$AllNodes,
+        [object[]]$Nodes,
         [System.Windows.Forms.RichTextBox]$Rtb
     )
-
-    # Windows-Auth auf ALLEN Nodes testen
-    $failedNodes = @()
-    foreach ($nc in $AllNodes) {
-        try {
-            $testConn = Connect-DbaInstance -SqlInstance $nc.SqlInstance -ErrorAction Stop
-            $testConn.ConnectionContext.Disconnect()
-            Write-RtfInfo -Rtb $Rtb -Msg "  Windows-Auth '$($nc.SqlInstance)': OK"
-        } catch {
-            Write-RtfWarn -Rtb $Rtb -Msg "  Windows-Auth '$($nc.SqlInstance)': fehlgeschlagen – $_"
-            $failedNodes += $nc.SqlInstance
-        }
-    }
-
-    if ($failedNodes.Count -eq 0) {
-        Write-RtfInfo -Rtb $Rtb -Msg "Authentifizierung: Windows-Auth (Kerberos/NTLM) auf allen Nodes OK"
-        return $null   # kein SQL-Login nötig
-    }
-
-    # Mindestens ein Node nicht per Windows-Auth erreichbar → SQL-Login erforderlich.
-    # Voraussetzung: SQL Server muss im Mixed-Mode laufen.
-    # Prüfung und automatische Aktivierung per xp_instance_regwrite (lokal via PSRemoting).
-    Write-RtfSection -Rtb $Rtb -Msg 'Manuelle Aktion erforderlich: SQL-Login anlegen'
-    Write-RtfWarn -Rtb $Rtb -Msg "  Folgende Nodes sind per Windows-Auth (Kerberos) nicht erreichbar:"
-    foreach ($n in $failedNodes) {
-        Write-RtfWarn -Rtb $Rtb -Msg "    – $n"
-    }
-
-    # Mixed-Mode prüfen und bei Bedarf aktivieren
-    Write-RtfInfo -Rtb $Rtb -Msg ""
-    Write-RtfSection -Rtb $Rtb -Msg 'Mixed-Mode Authentifizierung prüfen'
-    foreach ($nc in ($AllNodes | Where-Object { $failedNodes -contains $_.SqlInstance })) {
+    foreach ($nc in $Nodes) {
         $node = $nc.Hostname
         try {
             $loginMode = Invoke-Command -ComputerName $node -ScriptBlock {
@@ -1305,7 +1325,7 @@ function Initialize-SetupCredential {
                 $ready = $false
                 while (-not $ready) {
                     if ((Get-Date) -gt $deadline) { throw "Timeout: Dienst startet nicht" }
-                    try { Invoke-DbaQuery -SqlInstance $nc.SqlInstance -Query 'SELECT 1' -ErrorAction Stop | Out-Null; $ready = $true }
+                    try { Invoke-DbaQuery -SqlInstance $nc.SqlInstance -Query 'SELECT 1' -EnableException | Out-Null; $ready = $true }
                     catch { Start-Sleep -Seconds 2 }
                 }
                 Write-RtfSuccess -Rtb $Rtb -Msg "  $node`: Mixed-Mode aktiviert, SQL Server bereit."
@@ -1317,15 +1337,119 @@ function Initialize-SetupCredential {
             Write-RtfWarn -Rtb $Rtb -Msg "  $node`: Bitte Mixed-Mode manuell aktivieren: Server Properties → Security → SQL Server and Windows Authentication mode"
         }
     }
+}
+
+function Initialize-SetupCredential {
+    param(
+        [string]$PrimaryInstance,
+        [object[]]$AllNodes,
+        [string]$AuthMode = 'Auto',
+        [System.Windows.Forms.RichTextBox]$Rtb
+    )
+
+    # Windows-Auth auf ALLEN Nodes testen und das Anmeldeverfahren ermitteln.
+    # Eine erfolgreiche Windows-Anmeldung reicht allein nicht: ohne SPNs faellt sie
+    # still auf NTLM zurueck. Fuer entfernte Nodes wird deshalb KERBEROS verlangt,
+    # sonst laeuft das Setup ueber ein temporaeres SQL-Login. Die Verbindung zum
+    # lokalen Node ist immer NTLM und zaehlt nicht.
+    $failedNodes = @()
+    $ntlmNodes   = @()
+    foreach ($nc in $AllNodes) {
+        try {
+            $scheme = (Invoke-DbaQuery -SqlInstance $nc.SqlInstance -EnableException `
+                -Query 'SELECT auth_scheme FROM sys.dm_exec_connections WHERE session_id = @@SPID').auth_scheme
+            $isLocal = (($nc.Hostname -split '\.')[0]) -eq $env:COMPUTERNAME
+            if ($scheme -eq 'KERBEROS' -or $isLocal) {
+                $hint = if ($isLocal -and $scheme -ne 'KERBEROS') { "$scheme, lokaler Node" } else { $scheme }
+                Write-RtfInfo -Rtb $Rtb -Msg "  Windows-Auth '$($nc.SqlInstance)': OK ($hint)"
+            } else {
+                Write-RtfWarn -Rtb $Rtb -Msg "  Windows-Auth '$($nc.SqlInstance)': nur $scheme – kein Kerberos (SPNs fehlen?)"
+                $ntlmNodes += $nc.SqlInstance
+            }
+        } catch {
+            Write-RtfWarn -Rtb $Rtb -Msg "  Windows-Auth '$($nc.SqlInstance)': fehlgeschlagen – $_"
+            $failedNodes += $nc.SqlInstance
+        }
+    }
+
+    if ($failedNodes.Count -eq 0 -and $ntlmNodes.Count -eq 0 -and $AuthMode -ne 'SQL-Login') {
+        Write-RtfInfo -Rtb $Rtb -Msg "Authentifizierung: Windows-Auth (Kerberos) auf allen Nodes OK"
+        return $null   # kein SQL-Login nötig
+    }
+
+    if ($AuthMode -eq 'SQL-Login') {
+        Write-RtfInfo -Rtb $Rtb -Msg "Authentifizierung: Setup-Modus 'SQL-Login' gewählt – Setup läuft über temporäres SQL-Login."
+    } elseif ($ntlmNodes.Count -gt 0) {
+        Write-RtfWarn -Rtb $Rtb -Msg "Authentifizierung: Kerberos nicht verfügbar – Setup läuft über temporäres SQL-Login."
+    }
+
+    # Login-Name und Passwort generieren (automatischer und manueller Weg nutzen dieselben Werte)
+    $loginName = 'AGSetup_' + ([System.Guid]::NewGuid().ToString('N').Substring(0,8))
+    $loginPwd  = New-RandomPassword
+    $secPwd    = ConvertTo-SecureString $loginPwd -AsPlainText -Force
+    $loginCred = New-Object System.Management.Automation.PSCredential($loginName, $secPwd)
+    $allInstances = @($AllNodes | ForEach-Object { $_.SqlInstance })
+
+    # ------------------------------------------------------------------
+    # Automatisch: alle Nodes per Windows-Auth erreichbar (auch NTLM) ->
+    # temporäres SQL-Login selbst anlegen und damit weiterarbeiten.
+    # ------------------------------------------------------------------
+    if ($failedNodes.Count -eq 0) {
+        Write-RtfSection -Rtb $Rtb -Msg 'Temporäres SQL-Login anlegen'
+        try {
+            # Mixed-Mode ist Voraussetzung für die SQL-Anmeldung
+            $winOnly = @($AllNodes | Where-Object {
+                (Invoke-DbaQuery -SqlInstance $_.SqlInstance -EnableException `
+                    -Query "SELECT CAST(SERVERPROPERTY('IsIntegratedSecurityOnly') AS int) AS v").v -eq 1
+            })
+            if ($winOnly.Count -gt 0) { Enable-SqlMixedMode -Nodes $winOnly -Rtb $Rtb }
+
+            # PBM-Policy (On-Change: Prevent) würde CREATE LOGIN per Trigger zurückrollen
+            Set-PbmPolicy -Enable $false -Nodes $AllNodes -SqlCred $null -Rtb $Rtb
+
+            $script:setupLoginName  = $loginName
+            $script:setupLoginNodes = $allInstances
+            $createSql = @"
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'$loginName')
+BEGIN
+    CREATE LOGIN [$loginName] WITH PASSWORD = '$loginPwd',
+        CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF;
+    ALTER SERVER ROLE [sysadmin] ADD MEMBER [$loginName];
+END
+"@
+            foreach ($nc in $AllNodes) {
+                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -EnableException -Query $createSql
+                $testConn = Connect-DbaInstance -SqlInstance $nc.SqlInstance -SqlCredential $loginCred -EnableException
+                $testConn.ConnectionContext.Disconnect()
+                Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login '$loginName' angelegt, SQL-Anmeldung OK."
+            }
+            $script:setupLoginCred = $loginCred
+            return $loginCred
+        } catch {
+            Write-RtfError -Rtb $Rtb -Msg "  Automatisches Anlegen fehlgeschlagen – $_"
+            Write-RtfWarn  -Rtb $Rtb -Msg "  Weiter mit manuellem Anlegen."
+        }
+    }
+
+    # ------------------------------------------------------------------
+    # Manuell: mindestens ein Node nicht per Windows-Auth erreichbar.
+    # ------------------------------------------------------------------
+    Write-RtfSection -Rtb $Rtb -Msg 'Manuelle Aktion erforderlich: SQL-Login anlegen'
+    if ($failedNodes.Count -gt 0) {
+        Write-RtfWarn -Rtb $Rtb -Msg "  Folgende Nodes sind per Windows-Auth nicht erreichbar:"
+        foreach ($n in $failedNodes) {
+            Write-RtfWarn -Rtb $Rtb -Msg "    – $n"
+        }
+        # Mixed-Mode prüfen und bei Bedarf aktivieren (lokal via PSRemoting)
+        Write-RtfInfo -Rtb $Rtb -Msg ""
+        Write-RtfSection -Rtb $Rtb -Msg 'Mixed-Mode Authentifizierung prüfen'
+        Enable-SqlMixedMode -Nodes @($AllNodes | Where-Object { $failedNodes -contains $_.SqlInstance }) -Rtb $Rtb
+    }
 
     Write-RtfInfo -Rtb $Rtb -Msg ""
     Write-RtfInfo -Rtb $Rtb -Msg "  Bitte auf ALLEN Nodes folgendes T-SQL als sysadmin ausführen:"
     Write-RtfInfo -Rtb $Rtb -Msg "  (z.B. per SSMS lokal auf dem jeweiligen Node oder per RDP)"
     Write-RtfInfo -Rtb $Rtb -Msg ""
-
-    # Login-Name und Passwort generieren
-    $loginName = 'AGSetup_' + ([System.Guid]::NewGuid().ToString('N').Substring(0,8))
-    $loginPwd  = New-RandomPassword
 
     $createSql = @'
 -- Policy temporär deaktivieren
@@ -1348,11 +1472,11 @@ END
     Write-RtfWarn -Rtb $Rtb -Msg "  Nach Ausführung auf allen Nodes: Klick auf 'Weiter' um fortzufahren."
     Write-RtfWarn -Rtb $Rtb -Msg "  Login: $loginName   Passwort: $loginPwd"
 
-    # Login-Daten für die Fortsetzung merken
-    $script:setupLoginName  = $loginName
-    $script:setupLoginNodes = @($AllNodes | ForEach-Object { $_.SqlInstance })
-    $secPwd = ConvertTo-SecureString $loginPwd -AsPlainText -Force
-    $script:setupLoginCred  = New-Object System.Management.Automation.PSCredential($loginName, $secPwd)
+    # Login-Daten für die Fortsetzung merken; das T-SQL oben deaktiviert die Policy auf allen Nodes
+    $script:setupLoginName   = $loginName
+    $script:setupLoginNodes  = $allInstances
+    $script:setupLoginCred   = $loginCred
+    $script:pbmDisabledNodes = $allInstances
 
     return '__WAIT__'   # Signal an den Caller: pausieren und auf Weiter warten
 }
@@ -1408,6 +1532,12 @@ function Remove-SetupCredential {
 # Jeder Node bekommt ein selbst-signiertes Zertifikat, tauscht es mit dem
 # anderen Node aus – kein AD-Lookup nötig.
 # ---------------------------------------------------------------------------
+function _ConvertTo-AdminSharePath {
+    # F:\Pfad\Datei auf Host X  ->  \\X\F$\Pfad\Datei (kein Join-Path: fremde Laufwerke)
+    param([string]$ComputerName, [string]$LocalPath)
+    return "\\$ComputerName\" + ($LocalPath -replace '^(\w):', '$1$')
+}
+
 function _Set-HadrEndpointCertAuth {
     param(
         [array]  $ActiveNodes,
@@ -1416,27 +1546,33 @@ function _Set-HadrEndpointCertAuth {
         [string] $PrimaryInstance
     )
 
-    $certs   = @{}   # Node -> Zertifikatname
-    $tmpPath = 'C:\System\Certs'
+    $certs = @{}   # Node -> Zertifikat-Infos
 
-    # Sicherstellen dass $tmpPath auf allen Nodes existiert
+    # Phase 1: Master Key + Zertifikat auf jedem Node erstellen und exportieren.
+    # Ablage im Standard-Backup-Verzeichnis der Instanz: dort darf das SQL-Dienstkonto
+    # schreiben (unter C:\System liefert xp_create_subdir sonst Fehler 5).
     foreach ($nc in $ActiveNodes) {
-        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true `
-            -Query "EXEC xp_create_subdir N'$tmpPath'"
-    }
-
-    # Phase 1: Master Key + Zertifikat auf jedem Node erstellen und exportieren
-    foreach ($nc in $ActiveNodes) {
+        $bkDir = (Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true `
+            -Query "SELECT CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS nvarchar(4000)) AS p").p
+        if (-not $bkDir -or $bkDir -is [System.DBNull]) {
+            throw "$($nc.SqlInstance): Standard-Backup-Verzeichnis nicht ermittelbar."
+        }
+        $certDir  = $bkDir.TrimEnd('\') + '\HADR_Certs'
         $short    = ($nc.Hostname -split '\.')[0].ToUpper()
         $certName = "HADR_Cert_$short"
-        $cerFile  = "$tmpPath\$certName.cer"
-        $certs[$nc.SqlInstance] = @{ CertName = $certName; CerFile = $cerFile; Short = $short }
+        $cerFile  = "$certDir\$certName.cer"
+        $certs[$nc.SqlInstance] = @{ CertName = $certName; CerFile = $cerFile; CertDir = $certDir; Short = $short }
 
         Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Erstelle Zertifikat '$certName' ..."
 
+        Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true `
+            -Query "EXEC xp_create_subdir N'$certDir'"
+        # BACKUP CERTIFICATE bricht ab, wenn die Datei von einem früheren Lauf existiert
+        Remove-Item -LiteralPath (_ConvertTo-AdminSharePath $nc.Hostname $cerFile) -Force -ErrorAction SilentlyContinue
+
         Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true -Query @"
 IF NOT EXISTS (SELECT 1 FROM sys.symmetric_keys WHERE name = '##MS_DatabaseMasterKey##')
-    CREATE MASTER KEY ENCRYPTION BY PASSWORD = '$(New-RandomPassword -Length 32)';
+    CREATE MASTER KEY ENCRYPTION BY PASSWORD = '$(New-RandomPassword)';
 IF NOT EXISTS (SELECT 1 FROM sys.certificates WHERE name = N'$certName')
     CREATE CERTIFICATE [$certName]
         WITH SUBJECT = 'AlwaysOn Endpoint Certificate $short',
@@ -1461,24 +1597,22 @@ BACKUP CERTIFICATE [$certName] TO FILE = N'$cerFile';
             $loginName  = "HADR_Login_$($otherInfo.Short)"
             $userName   = "HADR_User_$($otherInfo.Short)"
 
-            # Zertifikatdatei vom anderen Node kopieren (UNC)
-            $uncSrc = $otherInfo.CerFile -replace '^(\w):\\', "\\$($other.Hostname)\`$1`$\"
-            $uncDst = $myInfo.CerFile    -replace '^(\w):\\', "\\$($nc.Hostname)\`$1`$\"
-            if (-not (Test-Path $uncSrc)) { throw "Zertifikatdatei nicht erreichbar: $uncSrc" }
-            if ($uncSrc -ne $uncDst) { Copy-Item $uncSrc -Destination ($uncDst -replace '[^\\]+$', '') -Force }
+            # Zertifikatdatei vom anderen Node in das eigene Zertifikat-Verzeichnis kopieren (UNC)
+            $importFile = "$($myInfo.CertDir)\$($otherInfo.CertName).cer"
+            $uncSrc = _ConvertTo-AdminSharePath $other.Hostname $otherInfo.CerFile
+            $uncDst = _ConvertTo-AdminSharePath $nc.Hostname $importFile
+            if (-not (Test-Path -LiteralPath $uncSrc)) { throw "Zertifikatdatei nicht erreichbar: $uncSrc" }
+            if ($uncSrc -ne $uncDst) { Copy-Item -LiteralPath $uncSrc -Destination $uncDst -Force }
 
             Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $SqlCred -EnableException:$true -Query @"
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'$loginName')
-    CREATE LOGIN [$loginName] WITH PASSWORD = '$(New-RandomPassword -Length 32)';
+    CREATE LOGIN [$loginName] WITH PASSWORD = '$(New-RandomPassword)';
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'$userName')
-BEGIN
-    USE master;
     CREATE USER [$userName] FOR LOGIN [$loginName];
-END
 IF NOT EXISTS (SELECT 1 FROM sys.certificates WHERE name = N'$($otherInfo.CertName)')
     CREATE CERTIFICATE [$($otherInfo.CertName)]
         AUTHORIZATION [$userName]
-        FROM FILE = N'$($otherInfo.CerFile)';
+        FROM FILE = N'$importFile';
 GRANT CONNECT ON ENDPOINT::[HADR_Endpoint] TO [$loginName];
 "@
             Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Zertifikat von '$($other.SqlInstance)' importiert, CONNECT gesetzt."
@@ -1514,7 +1648,13 @@ function Start-AlwaysOnConfiguration {
     # Verbindungs-Credential automatisch ermitteln                        #
     # Windows-Auth OK → weiter. Fehlgeschlagen → Anwender-Aktion nötig.  #
     # ------------------------------------------------------------------ #
-    $initResult = Initialize-SetupCredential -PrimaryInstance $primaryInstance -AllNodes $activeNodes -Rtb $Rtb
+    $initResult = Initialize-SetupCredential -PrimaryInstance $primaryInstance -AllNodes $activeNodes -AuthMode $Config.AuthMode -Rtb $Rtb
+
+    if ($initResult -is [System.Management.Automation.PSCredential]) {
+        # Kein Kerberos (oder Modus 'SQL-Login'): temporäres SQL-Login wurde automatisch angelegt
+        Invoke-AlwaysOnSteps -Config $Config -Rtb $Rtb -BtnOK $BtnOK -SqlCred $initResult
+        return
+    }
 
     if ($initResult -eq '__WAIT__') {
         # Anwender muss Login manuell anlegen → "Weiter"-Button einblenden
@@ -1525,7 +1665,7 @@ function Start-AlwaysOnConfiguration {
         return
     }
 
-    # Windows-Auth auf allen Nodes OK → direkt weitermachen
+    # Kerberos auf allen Nodes OK → direkt per Windows-Auth weitermachen
     Invoke-AlwaysOnSteps -Config $Config -Rtb $Rtb -BtnOK $BtnOK -SqlCred $null
 }
 
@@ -1792,6 +1932,10 @@ CREATE ENDPOINT [HADR_Endpoint]
     if ($Config.ServiceAccount) {
         Write-RtfSection -Rtb $Rtb -Msg 'Schritt 4: Endpoint CONNECT-Berechtigung setzen'
 
+        # Im SQL-Login-Pfad ist die PBM-Policy bereits bis zum Cleanup deaktiviert.
+        # Im Windows-Pfad nur für diesen Schritt (CREATE LOGIN würde per Trigger zurückgerollt).
+        if (-not $sqlCred) { Set-PbmPolicy -Enable $false -Nodes $activeNodes -SqlCred $null -Rtb $Rtb }
+
         foreach ($nc in $activeNodes) {
             try {
                 # Login prüfen – beide Formate (DOMAIN\User und UPN) abdecken
@@ -1835,18 +1979,17 @@ CREATE ENDPOINT [HADR_Endpoint]
                         }
                     }
 
-                    # Versuch 3: Zertifikat-basierte Endpoint-Authentifizierung einrichten
+                    # Versuch 3: Zertifikat-basierte Endpoint-Authentifizierung einrichten.
+                    # Gilt für ALLE Nodes – danach ist Schritt 4 abgeschlossen.
                     if (-not $loginCreated) {
                         Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): Windows-Login nicht anlegbar. Endpoint wird auf Zertifikat-Authentifizierung umgestellt ..."
                         try {
                             _Set-HadrEndpointCertAuth -ActiveNodes $activeNodes -SqlCred $sqlCred -Rtb $Rtb -PrimaryInstance $primaryInstance
-                            # Nach Zertifikat-Setup kein weiteres GRANT LOGIN nötig
-                            continue
                         } catch {
-                            Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Zertifikat-Setup fehlgeschlagen – $_"
-                            Write-RtfError -Rtb $Rtb -Msg "  MANUELL ERFORDERLICH: CREATE LOGIN + GRANT CONNECT ON ENDPOINT durch AD-Team"
-                            continue
+                            Write-RtfError -Rtb $Rtb -Msg "  Zertifikat-Setup fehlgeschlagen – $_"
+                            Write-RtfError -Rtb $Rtb -Msg "  MANUELL ERFORDERLICH: Endpoint-Authentifizierung (Windows-Login + GRANT CONNECT oder Zertifikate) einrichten"
                         }
+                        break
                     }
                 } else {
                     Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login '$actualLoginName' bereits vorhanden – übersprungen."
@@ -1870,6 +2013,8 @@ CREATE ENDPOINT [HADR_Endpoint]
                 Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Fehler in Schritt 4 – $_"
             }
         }
+
+        if (-not $sqlCred) { Set-PbmPolicy -Enable $true -Nodes $activeNodes -SqlCred $null -Rtb $Rtb }
     }
 
     # ------------------------------------------------------------------ #
@@ -2048,7 +2193,12 @@ REPLICA ON
             # konfigurierten Modus haben.
             foreach ($sec in $secondaries) {
                 try {
-                    $modifyReplicaSql = "ALTER AVAILABILITY GROUP [$agName] MODIFY REPLICA ON N'$($sec.SqlInstance)' WITH (FAILOVER_MODE = $failMode, AVAILABILITY_MODE = $availMode);"
+                    # MODIFY REPLICA erlaubt nur EINE Option pro Statement. Reihenfolge:
+                    # AUTOMATIC braucht vorher SYNCHRONOUS_COMMIT, ASYNCHRONOUS_COMMIT
+                    # braucht vorher MANUAL.
+                    $setAvail = "ALTER AVAILABILITY GROUP [$agName] MODIFY REPLICA ON N'$($sec.SqlInstance)' WITH (AVAILABILITY_MODE = $availMode);"
+                    $setFail  = "ALTER AVAILABILITY GROUP [$agName] MODIFY REPLICA ON N'$($sec.SqlInstance)' WITH (FAILOVER_MODE = $failMode);"
+                    $modifyReplicaSql = if ($failMode -eq 'AUTOMATIC') { "$setAvail $setFail" } else { "$setFail $setAvail" }
                     Write-RtfInfo -Rtb $Rtb -Msg "  $($sec.SqlInstance): Failover-Modus auf '$failMode' setzen ..."
                     if ($sqlCred) {
                         $modOut = & sqlcmd -S $primaryInstance -U $sqlCred.UserName `
@@ -2654,6 +2804,7 @@ function Invoke-LoadData {
         $script:agConfig.BackupShare     = $rawInfo['BackupShare']
         $script:agConfig.ServiceAccount  = $rawInfo['ServiceAccount']
         $script:agConfig.ServicePassword = ''
+        $script:agConfig.AuthMode        = 'Auto'
 
         # Originalwert für späteren Änderungsvergleich sichern
         $script:originalServiceAccount   = $rawInfo['OriginalServiceAccount']
@@ -2747,6 +2898,10 @@ $btnOK.Add_Click({
     if ($script:agConfig.ListenerIP)         { $script:agConfig.ListenerIP         = $script:agConfig.ListenerIP.Trim() }
     if ($script:agConfig.ListenerSubnetMask) { $script:agConfig.ListenerSubnetMask = $script:agConfig.ListenerSubnetMask.Trim() }
     if ($script:agConfig.ListenerName)       { $script:agConfig.ListenerName       = $script:agConfig.ListenerName.Trim() }
+    if ($script:agConfig.ListenerName -eq $script:agConfig.ClusterName) {
+        [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerIsClusterName'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
+        return
+    }
     if (-not (Test-IPv4Address $script:agConfig.ListenerIP)) {
         [System.Windows.Forms.MessageBox]::Show((T 'MsgListenerIPRequired'), (T 'MsgTitleError'), 'OK', 'Error') | Out-Null
         return
