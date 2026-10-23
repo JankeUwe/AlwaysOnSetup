@@ -1,5 +1,32 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.6] — 2026-10-23
+
+### Mixed mode without WinRM
+
+Switching a node to mixed mode (and back at the end) needed PowerShell remoting to the node.
+Where WinRM is not available, for example with "The WinRM client sent a request to an HTTP
+server and got a response saying the requested HTTP URL was not available" (no WinRM listener
+for the node's IP), the setup stopped with "Mixed-Mode konnte nicht aktiviert werden".
+
+- **LoginMode via T-SQL:** the tool now sets `LoginMode` with `xp_instance_regwrite` over the
+  existing Windows-auth connection (NTLM is enough, sysadmin needed) and reads the value back,
+  since the extended procedure does not always report failures.
+- **Restart via the Service Control Manager:** the SQL Server service (and running dependent
+  services such as SQL Agent) is restarted over RPC/SMB, the same path `sc.exe \\node` uses.
+  No WinRM involved.
+- **WinRM only as fallback:** PowerShell remoting is used only when the T-SQL or the restart
+  path fails. If the restart fails both ways, the registry value is set back so no node is
+  left with a pending login-mode change; the log shows both error messages.
+- **Mixed-mode check per node via T-SQL in both paths:** a node that already runs in mixed mode
+  (for example switched by hand in SSMS) is skipped, so the WinRM error no longer blocks it.
+  A node whose registry already says mixed mode but still runs Windows-only gets the missing
+  restart. When some nodes are not reachable with Windows auth at all, every node is now
+  checked, not only the unreachable ones.
+- **No abort any more:** if mixed mode cannot be enabled automatically, the setup continues
+  with the manual login step and lists the nodes to switch by hand. **Weiter** then tests the
+  SQL login on every node, as before. Nodes switched by hand are not set back by the tool.
+
 ## [1.3.5] — 2026-10-23
 
 ### SPN check without domain read access warns and lists all needed SPNs

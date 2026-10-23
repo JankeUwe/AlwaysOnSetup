@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.5'
+$script:Version = '1.3.6'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -1350,13 +1350,33 @@ function Wait-SqlInstanceReady {
     return $false
 }
 
-function Set-SqlLoginMode {
-    # LoginMode 1 = nur Windows-Auth, 2 = Mixed-Mode. Ändert die Registry der Instanz
-    # (Instanz-ID über 'Instance Names\SQL', also auch benannte Instanzen) und startet
-    # den Dienst samt abhängiger Dienste (SQL Agent) neu. Gibt den alten Wert zurück.
-    param($Node, [int]$LoginMode, $SqlCred, [System.Windows.Forms.RichTextBox]$Rtb)
+function Set-SqlLoginModeTsql {
+    # LoginMode per T-SQL in der Instanz-Registry setzen (xp_instance_regwrite löst den
+    # Instanzschlüssel selbst auf, kein WinRM nötig). Braucht sysadmin. Liest danach zurück,
+    # weil die xp_instance_reg*-Prozeduren Fehler nicht immer als Ausnahme melden.
+    param([string]$SqlInstance, [int]$LoginMode, $SqlCred)
+    $key = 'Software\Microsoft\MSSQLServer\MSSQLServer'
+    $q = @"
+DECLARE @old int, @new int;
+EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'$key', N'LoginMode', @old OUTPUT;
+IF ISNULL(@old, -1) <> $LoginMode
+    EXEC master.dbo.xp_instance_regwrite N'HKEY_LOCAL_MACHINE', N'$key', N'LoginMode', REG_DWORD, $LoginMode;
+EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'$key', N'LoginMode', @new OUTPUT;
+SELECT @old AS old, @new AS new;
+"@
+    $r = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCred -EnableException -Query $q
+    if ($r.new -isnot [int] -or $r.new -ne $LoginMode) {
+        throw "LoginMode nach xp_instance_regwrite ist '$($r.new)' statt $LoginMode (Rechte?)"
+    }
+    if ($r.old -is [int]) { return $r.old } else { return 0 }
+}
+
+function Set-SqlLoginModeRemoting {
+    # Fallback über PSRemoting, wenn keine Windows-Anmeldung an der Instanz möglich ist.
+    # Instanz-ID über 'Instance Names\SQL', also auch benannte Instanzen.
+    param($Node, [int]$LoginMode)
     $parts = Get-SqlInstanceParts $Node.SqlInstance
-    $old = Invoke-Command -ComputerName $Node.Hostname -ErrorAction Stop -ArgumentList $parts.Instance, $LoginMode -ScriptBlock {
+    Invoke-Command -ComputerName $Node.Hostname -ErrorAction Stop -ArgumentList $parts.Instance, $LoginMode -ScriptBlock {
         param($inst, $newMode)
         $id = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' -ErrorAction Stop).$inst
         if (-not $id) { throw "Instanz '$inst' nicht in der Registry gefunden" }
@@ -1365,14 +1385,86 @@ function Set-SqlLoginMode {
         if ($cur -ne $newMode) { Set-ItemProperty -Path $path -Name LoginMode -Value $newMode -Type DWord -ErrorAction Stop }
         $cur
     }
-    if ($old -eq $LoginMode) { return $old }
+}
 
-    Write-RtfInfo -Rtb $Rtb -Msg "  $($Node.SqlInstance): LoginMode $old -> $LoginMode, Dienst-Neustart ($($parts.Service)) ..."
-    Invoke-Command -ComputerName $Node.Hostname -ErrorAction Stop -ArgumentList $parts.Service -ScriptBlock {
-        param($svcName)
-        $deps = @(Get-Service -Name $svcName -DependentServices | Where-Object { $_.Status -eq 'Running' })
-        Restart-Service -Name $svcName -Force -ErrorAction Stop
-        foreach ($d in $deps) { Start-Service -Name $d.Name -ErrorAction SilentlyContinue }
+function Restart-SqlServiceScm {
+    # Dienst-Neustart über den Dienststeuerungs-Manager des Ziel-Hosts (RPC/SMB wie sc.exe,
+    # kein WinRM). Abhängige Dienste (SQL Agent) werden mit gestoppt und wieder gestartet.
+    param([string]$ComputerName, [string]$ServiceName, [System.Windows.Forms.RichTextBox]$Rtb, [int]$TimeoutSec = 120)
+    Add-Type -AssemblyName System.ServiceProcess
+    $timeout = [TimeSpan]::FromSeconds($TimeoutSec)
+    try {
+        # GetServices meldet Zugriffs-/RPC-Fehler sofort; Eigenschaften eines nicht vorhandenen
+        # Dienstes liefern unter PowerShell nur $null statt einer verständlichen Meldung.
+        $svc = [System.ServiceProcess.ServiceController]::GetServices($ComputerName) |
+            Where-Object { $_.ServiceName -eq $ServiceName }
+        if (-not $svc) { throw "Dienst '$ServiceName' auf '$ComputerName' nicht gefunden" }
+        $deps = @($svc.DependentServices | Where-Object { $_ -and $_.Status -eq 'Running' })
+        foreach ($d in $deps) { $d.Stop(); $d.WaitForStatus('Stopped', $timeout) }
+        $svc.Stop();  $svc.WaitForStatus('Stopped', $timeout)
+        $svc.Start(); $svc.WaitForStatus('Running', $timeout)
+    } catch {
+        # Der eigentliche Grund (Zugriff verweigert, RPC-Server nicht verfügbar ...) steckt innen
+        # Von innen nach außen, äußere Meldungen, die eine innere nur wiederholen, weglassen
+        $chain = @(); $e = $_.Exception
+        while ($e) { $chain = @($e.Message.Trim()) + $chain; $e = $e.InnerException }
+        $msgs = @()
+        foreach ($m in $chain) { if (-not @($msgs | Where-Object { $m.Contains($_) })) { $msgs += $m } }
+        [array]::Reverse($msgs)
+        throw ($msgs -join ' → ')
+    }
+    foreach ($d in $deps) {
+        try { $d.Start() }
+        catch { Write-RtfWarn -Rtb $Rtb -Msg "  $($ComputerName): Dienst '$($d.ServiceName)' nach Neustart nicht gestartet – $_" }
+    }
+}
+
+function Set-SqlLoginMode {
+    # LoginMode 1 = nur Windows-Auth, 2 = Mixed-Mode. Ändert die Registry der Instanz und
+    # startet den Dienst samt abhängiger Dienste (SQL Agent) neu. Gibt den alten Wert zurück.
+    # Erst ohne WinRM (T-SQL + Dienststeuerungs-Manager), PSRemoting nur als Fallback.
+    # Scheitert der Neustart, wird der alte Wert zurückgeschrieben (kein halber Zustand).
+    param($Node, [int]$LoginMode, $SqlCred, [System.Windows.Forms.RichTextBox]$Rtb, [switch]$Restart)
+    $parts    = Get-SqlInstanceParts $Node.SqlInstance
+    $hostName = if ($Node.Hostname) { $Node.Hostname } else { ($Node.SqlInstance -split '\\')[0] }
+
+    $via = 'T-SQL'
+    try {
+        $old = Set-SqlLoginModeTsql -SqlInstance $Node.SqlInstance -LoginMode $LoginMode -SqlCred $SqlCred
+    } catch {
+        $tsqlErr = $_
+        try {
+            $old = Set-SqlLoginModeRemoting -Node $Node -LoginMode $LoginMode
+            $via = 'PSRemoting'
+        } catch {
+            throw "per T-SQL: $tsqlErr | per PSRemoting: $_"
+        }
+    }
+    # $Restart: Registry stimmt schon, die laufende Instanz aber noch nicht (Neustart fehlt)
+    if ($old -eq $LoginMode -and -not $Restart) { return $old }
+
+    Write-RtfInfo -Rtb $Rtb -Msg "  $($Node.SqlInstance): LoginMode $old -> $LoginMode ($via), Dienst-Neustart ($($parts.Service)) ..."
+    try {
+        Restart-SqlServiceScm -ComputerName $hostName -ServiceName $parts.Service -Rtb $Rtb
+    } catch {
+        $scmErr = $_
+        try {
+            Invoke-Command -ComputerName $hostName -ErrorAction Stop -ArgumentList $parts.Service -ScriptBlock {
+                param($svcName)
+                $deps = @(Get-Service -Name $svcName -DependentServices | Where-Object { $_.Status -eq 'Running' })
+                Restart-Service -Name $svcName -Force -ErrorAction Stop
+                foreach ($d in $deps) { Start-Service -Name $d.Name -ErrorAction SilentlyContinue }
+            }
+        } catch {
+            $restartErr = "Dienst-Neustart fehlgeschlagen (Dienststeuerung: $scmErr | PSRemoting: $_)"
+            try {
+                if ($via -eq 'T-SQL') { Set-SqlLoginModeTsql -SqlInstance $Node.SqlInstance -LoginMode $old -SqlCred $SqlCred | Out-Null }
+                else { Set-SqlLoginModeRemoting -Node $Node -LoginMode $old | Out-Null }
+            } catch {
+                throw "$restartErr. LoginMode steht in der Registry auf $LoginMode, Zurücksetzen auf $old fehlgeschlagen – $_"
+            }
+            throw "$restartErr. LoginMode wieder auf $old gesetzt."
+        }
     }
     if (-not (Wait-SqlInstanceReady -SqlInstance $Node.SqlInstance -SqlCred $SqlCred)) {
         # Z.B. Node per Windows-Auth gar nicht erreichbar: Neustart ist erfolgt, nur nicht prüfbar
@@ -1389,11 +1481,26 @@ function Enable-SqlMixedMode {
     )
     $failed = @()
     foreach ($nc in $Nodes) {
+        # Vorabprüfung per T-SQL (laufender Modus): bereits Mixed-Mode -> nichts zu tun, auch
+        # wenn der Node von Hand umgestellt wurde und WinRM nicht geht. Ohne Windows-Anmeldung
+        # bleibt der Modus unbekannt, dann entscheidet Set-SqlLoginMode (ggf. per PSRemoting).
+        $winOnly = $null
         try {
-            $old = Set-SqlLoginMode -Node $nc -LoginMode 2 -SqlCred $null -Rtb $Rtb
+            $winOnly = (Invoke-DbaQuery -SqlInstance $nc.SqlInstance -EnableException `
+                -Query "SELECT CAST(SERVERPROPERTY('IsIntegratedSecurityOnly') AS int) AS v").v
+        } catch { Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Anmeldemodus per T-SQL nicht prüfbar (keine Windows-Anmeldung)." }
+        if ($winOnly -eq 0) {
+            Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Mixed-Mode bereits aktiv – OK."
+            continue
+        }
+        try {
+            # Registry schon auf 2, Instanz läuft aber noch mit nur Windows-Auth -> nur Neustart fehlt
+            $old = Set-SqlLoginMode -Node $nc -LoginMode 2 -SqlCred $null -Rtb $Rtb -Restart:($winOnly -eq 1)
             if ($old -ne 2) {
                 $script:mixedModeChanged += $nc
                 Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Mixed-Mode für das Setup aktiviert (wird am Ende zurückgestellt)."
+            } elseif ($winOnly -eq 1) {
+                Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Mixed-Mode war bereits eingetragen, fehlender Neustart nachgeholt."
             } else {
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Mixed-Mode bereits aktiv – OK."
             }
@@ -1458,16 +1565,6 @@ WHERE ag.name = N'$AGName' AND ars.is_local = 1
     }
 }
 
-function Stop-SetupNoSqlAuth {
-    # Ohne Kerberos und ohne Mixed-Mode ist kein Setup möglich: klar abbrechen und
-    # bereits eingeschalteten Mixed-Mode sofort zurückstellen (noch keine AG vorhanden).
-    param([string[]]$Instances, [System.Windows.Forms.RichTextBox]$Rtb)
-    Write-RtfError -Rtb $Rtb -Msg "Setup abgebrochen: kein Kerberos und SQL-Anmeldung nicht möglich auf: $($Instances -join ', ')"
-    Write-RtfError -Rtb $Rtb -Msg "  Lösung: SPNs setzen lassen (Kerberos) oder Mixed-Mode auf diesen Nodes manuell aktivieren und neu starten."
-    Restore-SqlLoginMode -AGName '' -PrimaryInstance '' -Rtb $Rtb
-    return '__ABORT__'
-}
-
 function Initialize-SetupCredential {
     param(
         [string]$PrimaryInstance,
@@ -1483,6 +1580,7 @@ function Initialize-SetupCredential {
     # lokalen Node ist immer NTLM und zaehlt nicht.
     $failedNodes = @()
     $ntlmNodes   = @()
+    $mmManual    = @()   # Nodes, auf denen Mixed-Mode von Hand aktiviert werden muss
     foreach ($nc in $AllNodes) {
         try {
             $scheme = (Invoke-DbaQuery -SqlInstance $nc.SqlInstance -EnableException `
@@ -1535,7 +1633,10 @@ function Initialize-SetupCredential {
             if ($winOnly.Count -gt 0) {
                 Write-RtfInfo -Rtb $Rtb -Msg "  Nur Windows-Auth auf: $(($winOnly | ForEach-Object { $_.SqlInstance }) -join ', ') – Mixed-Mode wird für das Setup aktiviert."
                 $mmFailed = Enable-SqlMixedMode -Nodes $winOnly -Rtb $Rtb
-                if ($mmFailed.Count -gt 0) { return (Stop-SetupNoSqlAuth -Instances $mmFailed -Rtb $Rtb) }
+                if ($mmFailed.Count -gt 0) {
+                    $mmManual = $mmFailed
+                    throw "Mixed-Mode nicht automatisch aktivierbar auf: $($mmFailed -join ', ')"
+                }
             }
 
             # PBM-Policy (On-Change: Prevent) rollt CREATE LOGIN ... FROM WINDOWS und
@@ -1577,11 +1678,19 @@ END
         foreach ($n in $failedNodes) {
             Write-RtfWarn -Rtb $Rtb -Msg "    – $n"
         }
-        # Mixed-Mode prüfen und bei Bedarf aktivieren (lokal via PSRemoting)
+        # Mixed-Mode auf ALLEN Nodes prüfen (das Login wird überall gebraucht) und bei Bedarf
+        # aktivieren: per T-SQL, wo Windows-Auth geht, sonst per PSRemoting. Was nicht klappt,
+        # wird unten als Handarbeit ausgegeben; 'Weiter' prüft die SQL-Anmeldung danach.
         Write-RtfInfo -Rtb $Rtb -Msg ""
         Write-RtfSection -Rtb $Rtb -Msg 'Mixed-Mode Authentifizierung prüfen'
-        $mmFailed = Enable-SqlMixedMode -Nodes @($AllNodes | Where-Object { $failedNodes -contains $_.SqlInstance }) -Rtb $Rtb
-        if ($mmFailed.Count -gt 0) { return (Stop-SetupNoSqlAuth -Instances $mmFailed -Rtb $Rtb) }
+        $mmManual = Enable-SqlMixedMode -Nodes $AllNodes -Rtb $Rtb
+    }
+
+    if ($mmManual.Count -gt 0) {
+        Write-RtfInfo -Rtb $Rtb -Msg ""
+        Write-RtfWarn -Rtb $Rtb -Msg "  Mixed-Mode bitte von Hand aktivieren auf: $($mmManual -join ', ')"
+        Write-RtfWarn -Rtb $Rtb -Msg "    SSMS: Server-Eigenschaften → Sicherheit → 'SQL Server- und Windows-Authentifizierungsmodus', danach SQL-Dienst neu starten."
+        Write-RtfWarn -Rtb $Rtb -Msg "    Diese Nodes stellt das Tool am Ende NICHT zurück – danach von Hand wieder auf 'Windows-Authentifizierungsmodus' stellen und neu starten."
     }
 
     Write-RtfInfo -Rtb $Rtb -Msg ""
@@ -1795,12 +1904,6 @@ function Start-AlwaysOnConfiguration {
     if ($initResult -is [System.Management.Automation.PSCredential]) {
         # Kein Kerberos (oder Modus 'SQL-Login'): temporäres SQL-Login wurde automatisch angelegt
         Invoke-AlwaysOnSteps -Config $Config -Rtb $Rtb -BtnOK $BtnOK -SqlCred $initResult
-        return
-    }
-
-    if ($initResult -eq '__ABORT__') {
-        $BtnOK.Enabled    = $true
-        $statusLabel.Text = 'Setup abgebrochen – SQL-Anmeldung nicht möglich (siehe Protokoll).'
         return
     }
 

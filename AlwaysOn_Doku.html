@@ -284,9 +284,9 @@
 
 <div class="steps">
   <div class="step-row"><div class="step-num">1</div><div class="step-body">Tool prüft per <code>sys.dm_exec_connections.auth_scheme</code>, ob die entfernten Nodes per Kerberos angemeldet sind</div></div>
-  <div class="step-row"><div class="step-num">2</div><div class="step-body">Nur NTLM (oder PropertyGrid <strong>Setup-Authentifizierung = SQL-Login</strong>): Tool aktiviert bei Bedarf Mixed-Mode (Dienst-Neustart, am Ende automatisch zurück auf nur Windows-Auth), deaktiviert die Passwort-Policy und legt das temporäre sysadmin-Login selbst an</div></div>
+  <div class="step-row"><div class="step-num">2</div><div class="step-body">Nur NTLM (oder PropertyGrid <strong>Setup-Authentifizierung = SQL-Login</strong>): Tool aktiviert bei Bedarf Mixed-Mode (per T-SQL <code>xp_instance_regwrite</code> und Dienst-Neustart über den Dienststeuerungs-Manager, kein WinRM nötig; PSRemoting nur als Fallback; am Ende automatisch zurück auf nur Windows-Auth), deaktiviert die Passwort-Policy und legt das temporäre sysadmin-Login selbst an</div></div>
   <div class="step-row"><div class="step-num">3</div><div class="step-body">Alle Schritte laufen über dieses SQL-Login</div></div>
-  <div class="step-row"><div class="step-num">4</div><div class="step-body">Nur wenn ein Node per Windows-Auth gar nicht erreichbar ist: T-SQL-Block (liegt bereits in der Zwischenablage, Button <strong>Login-T-SQL kopieren</strong> kopiert ihn erneut) per SSMS ausführen, dann <strong>Weiter</strong></div></div>
+  <div class="step-row"><div class="step-num">4</div><div class="step-body">Nur wenn ein Node per Windows-Auth gar nicht erreichbar ist: T-SQL-Block (liegt bereits in der Zwischenablage, Button <strong>Login-T-SQL kopieren</strong> kopiert ihn erneut) per SSMS ausführen, dann <strong>Weiter</strong>. Konnte das Tool Mixed-Mode auf einem Node nicht einschalten, nennt das Protokoll diesen Node: dort Mixed-Mode in SSMS aktivieren und den Dienst neu starten (wird am Ende nicht automatisch zurückgestellt)</div></div>
   <div class="step-row"><div class="step-num">5</div><div class="step-body">Temporäres Login wird am Ende automatisch entfernt, Policy reaktiviert, Mixed-Mode wieder auf nur Windows-Auth gestellt (Primary zuletzt, AG wird bei Failover zurückgeholt)</div></div>
 </div>
 
