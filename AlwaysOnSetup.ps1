@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.6'
+$script:Version = '1.3.7'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -1657,7 +1657,8 @@ END
 "@
             foreach ($nc in $AllNodes) {
                 Invoke-DbaQuery -SqlInstance $nc.SqlInstance -EnableException -Query $createSql
-                $testConn = Connect-DbaInstance -SqlInstance $nc.SqlInstance -SqlCredential $loginCred -EnableException
+                # Connect-DbaInstance kennt kein -EnableException (wirft bei Fehlern ohnehin)
+                $testConn = Connect-DbaInstance -SqlInstance $nc.SqlInstance -SqlCredential $loginCred -ErrorAction Stop
                 $testConn.ConnectionContext.Disconnect()
                 Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Login '$loginName' angelegt, SQL-Anmeldung OK."
             }

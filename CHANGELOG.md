@@ -1,5 +1,17 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.7] — 2026-10-23
+
+### Fixes
+
+- **Automatic temporary login always fell back to the manual step:** the login test after
+  creating `AGSetup_<random>` called `Connect-DbaInstance -EnableException`, a parameter
+  `Connect-DbaInstance` does not have. The log showed "Automatisches Anlegen fehlgeschlagen – A
+  parameter cannot be found that matches parameter name 'EnableException'" and the setup
+  continued with the manual T-SQL step, although the login had already been created. Present
+  since 1.2.0. All other cmdlet calls in the script were checked against dbatools 2.9.0 for
+  parameters that do not exist; none found.
+
 ## [1.3.6] — 2026-10-23
 
 ### Mixed mode without WinRM
