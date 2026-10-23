@@ -1,5 +1,18 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.3] — 2026-10-23
+
+### Temporary login password no longer ends up in saved log files
+
+On the manual path the live log shows the setup-login T-SQL and the line `Login: … Passwort: …`
+so the operator can run it on the node. Both contain the password, and the automatic
+`AlwaysOn_Setup_<date>.log` written at the end of the run copied it to disk, as did the
+"save log" button (RTF or text). Every saved log now has the password replaced by `********`;
+the live window and the clipboard still show it while the session runs.
+
+- Header and README corrected: SPN check is step 10, the AG sync job (step 8) uses
+  `Copy-DbaLogin` / `Copy-DbaAgentJob` / `Copy-DbaLinkedServer`.
+
 ## [1.3.2] — 2026-10-22
 
 ### Leftover test database from a failed run is removed

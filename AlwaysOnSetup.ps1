@@ -19,7 +19,7 @@
       - Das temporäre Login wird nach Abschluss automatisch entfernt.
 
     EMPFEHLUNG: SPNs vor dem Setup setzen – spart den manuellen Schritt!
-    Siehe Schritt 9 (SPN-Prüfung) für die benötigten setspn-Befehle.
+    Siehe Schritt 10 (SPN-Prüfung) für die benötigten setspn-Befehle.
 
 .NOTES
     Version  : 1.0.0
@@ -37,7 +37,8 @@
 
     Module (werden automatisch geladen/installiert):
       - FailoverClusters (RSAT-Clustering-PowerShell)
-      - dbaTools >= 2.0 (nur Invoke-DbaQuery / Connect-DbaInstance)
+      - dbaTools >= 2.0 (Konfiguration per Invoke-DbaQuery / Connect-DbaInstance,
+        AG-Sync-Job per Copy-DbaLogin / Copy-DbaAgentJob / Copy-DbaLinkedServer)
 
     Changelog:
       1.0.0  2026-04-27  Erstveröffentlichung
@@ -57,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.2'
+$script:Version = '1.3.3'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -1298,6 +1299,17 @@ $script:setupLoginName  = $null
 $script:setupLoginNodes = @()
 $script:setupLoginCred  = $null   # Wird von Start-AlwaysOnConfiguration nach Weiter-Klick befüllt
 $script:setupLoginSql   = ''      # T-SQL-Block für das manuelle Anlegen (Zwischenablage)
+$script:logSecrets      = [System.Collections.Generic.List[string]]::new()   # Werte, die nie in eine Logdatei dürfen
+
+# Passwörter vor dem Schreiben einer Logdatei maskieren. Das Live-Fenster zeigt sie im
+# manuellen Weg weiter an (Login-T-SQL), die gespeicherten Dateien enthalten nur ********.
+function Hide-LogSecret {
+    param([string]$Text)
+    foreach ($s in $script:logSecrets) {
+        if ($s) { $Text = $Text.Replace($s, '********') }
+    }
+    return $Text
+}
 
 function Copy-SetupSqlToClipboard {
     param([System.Windows.Forms.RichTextBox]$Rtb)
@@ -1503,6 +1515,7 @@ function Initialize-SetupCredential {
     # Login-Name und Passwort generieren (automatischer und manueller Weg nutzen dieselben Werte)
     $loginName = 'AGSetup_' + ([System.Guid]::NewGuid().ToString('N').Substring(0,8))
     $loginPwd  = New-RandomPassword
+    $script:logSecrets.Add($loginPwd)
     $secPwd    = ConvertTo-SecureString $loginPwd -AsPlainText -Force
     $loginCred = New-Object System.Management.Automation.PSCredential($loginName, $secPwd)
     $allInstances = @($AllNodes | ForEach-Object { $_.SqlInstance })
@@ -2822,7 +2835,7 @@ WHERE ag.name = N'$($Config.AGName)'
             New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
         $logFile = Join-Path $logDir ("AlwaysOn_Setup_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
-        $Rtb.Lines | Set-Content -LiteralPath $logFile -Encoding UTF8
+        $Rtb.Lines | ForEach-Object { Hide-LogSecret $_ } | Set-Content -LiteralPath $logFile -Encoding UTF8
         Write-RtfInfo -Rtb $Rtb -Msg "Logfile gespeichert: $logFile"
         $statusLabel.Text = "Logfile: $logFile"
     } catch {
@@ -3231,10 +3244,12 @@ $btnSaveLog.Add_Click({
     $dlg.Filter   = T 'SaveDialogFilter'
     $dlg.FileName = T 'SaveDialogFileName' -f (Get-Date -Format 'yyyyMMdd_HHmmss')
     if ($dlg.ShowDialog() -eq 'OK') {
+        # Nicht SaveFile(): Passwörter des temporären Logins werden vorher maskiert.
+        # RTF-Text ist reines ASCII (Sonderzeichen als \'xx / \uN), daher ASCII-Encoding.
         if ($dlg.FileName -like '*.rtf') {
-            $rtfBox.SaveFile($dlg.FileName, 'RichText')
+            [System.IO.File]::WriteAllText($dlg.FileName, (Hide-LogSecret $rtfBox.Rtf), [System.Text.Encoding]::ASCII)
         } else {
-            $rtfBox.SaveFile($dlg.FileName, 'PlainText')
+            [System.IO.File]::WriteAllText($dlg.FileName, (Hide-LogSecret $rtfBox.Text), [System.Text.UTF8Encoding]::new($true))
         }
         Write-RtfInfo -Rtb $rtfBox -Msg (T 'InfoLogfileSaved' -f $dlg.FileName)
     }

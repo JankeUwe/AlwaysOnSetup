@@ -14,7 +14,9 @@ WSFC Cleanup: Removes orphaned WSFC group entries
 SPN Validation: Generates AD team request file with required setspn commands
 Cluster Settings Backup: Backs up cluster settings before each change
 Backup Preference: Configurable (Primary / Secondary / PreferSecondary / None)
-Minimal dbaTools Usage: Only Invoke-DbaQuery and Connect-DbaInstance
+AG Sync Job: Creates the SQL Agent job "AG Sync - Logins, Jobs, LinkedServer" on every node (daily 02:00, runs only on the current primary)
+Password Masking: The temporary login's password never reaches a saved log file (masked as ********)
+Minimal dbaTools Usage: Configuration via Invoke-DbaQuery and Connect-DbaInstance; the AG sync job uses Copy-DbaLogin, Copy-DbaAgentJob and Copy-DbaLinkedServer
 Prerequisites
 Requirement	Minimum Version
 Windows Server	2022
@@ -28,8 +30,9 @@ dbaTools >= 2.0
 Usage
 # Run as local Administrator on a cluster node
 .\AlwaysOnSetup.ps1
+# or double-click Start-AlwaysOnSetup.cmd (elevates automatically)
 Recommendation: Set SPNs before setup — this saves the manual confirmation step.
-The script displays the required setspn commands in Step 9 (SPN validation).
+The script displays the required setspn commands in Step 10 (SPN validation).
 
 Process
 Script automatically detects WSFC cluster
@@ -44,7 +47,7 @@ AlwaysOnSetup.ps1	Main script (WinForms GUI + automation logic)
 AlwaysOn_Doku.html	Technical documentation
 AlwaysOn_Handbuch.docx	User manual
 Version
-1.0.0 — 2026-04-27 — Initial release
+1.3.3 — 2026-10-23 — see CHANGELOG.md for all releases
 More Information
 Documentation: www.powershelldba.de/alwaysonsetup/
 Website: www.powershelldba.de
