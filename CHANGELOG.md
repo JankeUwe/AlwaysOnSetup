@@ -1,5 +1,43 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.8] — 2026-10-23
+
+### Fixes
+
+- **HADR check and enabling were wrong since 1.0.0:** step 2 looked for `hadr enabled` in
+  `sys.configurations`, which does not exist. The check therefore always said "off", the tool
+  ran `sp_configure 'hadr enabled'` (fails: "The configuration option 'hadr enabled' does not
+  exist") and then restarted the SQL Server service on every node in every run, even with HADR
+  already on. Now the check uses `SERVERPROPERTY('IsHadrEnabled')`. If HADR is really off, the
+  tool sets `HADR_Enabled` in the instance registry via `xp_instance_regwrite` (as SQL Server
+  Configuration Manager does), restarts the service via the Service Control Manager (WinRM only
+  as fallback) and checks `IsHadrEnabled` afterwards. The same wrong check in the cluster
+  detection showed "AlwaysOn: AUS" for every node; fixed as well.
+- **Temporary login was not dropped:** the cleanup ran `DROP LOGIN` while connected as that
+  very login ("Could not drop login ... as the user is currently logged in"), then fell back to
+  PowerShell remoting. Now it connects with Windows authentication first, ends all sessions of
+  the login (`KILL`) and drops it; the temporary login and PowerShell remoting are only
+  fallbacks. If everything fails, the log shows the `DROP LOGIN` statement to run by hand.
+  The password policy is re-enabled before the drop, while the login can still connect.
+- **Leftover listener resources:** a failed `ADD LISTENER` can leave its network name and IP
+  resources in the AG's cluster role, so the next attempt fails with Msg 41057 "The WSFC
+  resource with the specified name already exists". When SQL Server has no listener for the AG,
+  the tool now removes these resources and does not create the listener in the same run.
+- **Disabled AD computer object (0x533):** removing a cluster network name resource (leftover
+  listener, or the leftover WSFC group the tool removes before creating the AG) makes the
+  cluster disable the listener's AD computer object. A new listener with that name then fails
+  with 0x533 "This user can't sign in because this account is currently disabled". The tool now
+  says so whenever it removes such a resource, names the computer objects the AD team has to
+  enable (or delete) and the cluster account that needs rights on them, and prints the
+  `ADD LISTENER` statement to run once that is done. The open items are repeated at the end of
+  the log.
+- **`HadrAgNameToldMap` cleanup without WinRM:** the registry value is now removed via the
+  remote registry; PowerShell remoting is only the fallback.
+- **Errors no longer swallowed:** creating the endpoint and the test database, setting FULL
+  recovery and the initial backup used `-ErrorAction Stop`, which `Invoke-DbaQuery` does not
+  turn into an exception; a failure there was only a warning and the step reported success.
+  They now use `-EnableException`.
+
 ## [1.3.7] — 2026-10-23
 
 ### Fixes

@@ -47,7 +47,7 @@ AlwaysOnSetup.ps1	Main script (WinForms GUI + automation logic)
 AlwaysOn_Doku.html	Technical documentation
 AlwaysOn_Handbuch.docx	User manual
 Version
-1.3.7 — 2026-10-23 — see CHANGELOG.md for all releases
+1.3.8 — 2026-10-23 — see CHANGELOG.md for all releases
 More Information
 Documentation: www.powershelldba.de/alwaysonsetup/
 Website: www.powershelldba.de

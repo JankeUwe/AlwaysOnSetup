@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.7'
+$script:Version = '1.3.8'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -938,10 +938,8 @@ function Get-ClusterAndSqlInfo {
                 # HADR-Status per T-SQL direkt abfragen
                 $aoEnabled = $false
                 try {
-                    $hadrResult = Invoke-DbaQuery -SqlInstance $instName -ErrorAction SilentlyContinue `
-                        -Query 'SELECT value_in_use FROM sys.configurations WHERE name = ''hadr enabled''' |
-                        Select-Object -First 1
-                    $aoEnabled = ($hadrResult -and $hadrResult.value_in_use -eq 1)
+                    $aoEnabled = (Invoke-DbaQuery -SqlInstance $instName -EnableException `
+                        -Query "SELECT CAST(SERVERPROPERTY('IsHadrEnabled') AS int) AS v").v -eq 1
                 } catch { }
 
                 $alwaysOnStates += "$($node): $(if($aoEnabled){'Aktiviert'}else{'Deaktiviert'})"
@@ -1350,25 +1348,31 @@ function Wait-SqlInstanceReady {
     return $false
 }
 
-function Set-SqlLoginModeTsql {
-    # LoginMode per T-SQL in der Instanz-Registry setzen (xp_instance_regwrite löst den
+function Set-SqlInstanceRegDword {
+    # DWORD-Wert per T-SQL in der Instanz-Registry setzen (xp_instance_regwrite löst den
     # Instanzschlüssel selbst auf, kein WinRM nötig). Braucht sysadmin. Liest danach zurück,
     # weil die xp_instance_reg*-Prozeduren Fehler nicht immer als Ausnahme melden.
-    param([string]$SqlInstance, [int]$LoginMode, $SqlCred)
-    $key = 'Software\Microsoft\MSSQLServer\MSSQLServer'
+    # Gibt den alten Wert zurück (0, wenn er fehlte).
+    param([string]$SqlInstance, [string]$SubKey, [string]$Name, [int]$Value, $SqlCred)
     $q = @"
 DECLARE @old int, @new int;
-EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'$key', N'LoginMode', @old OUTPUT;
-IF ISNULL(@old, -1) <> $LoginMode
-    EXEC master.dbo.xp_instance_regwrite N'HKEY_LOCAL_MACHINE', N'$key', N'LoginMode', REG_DWORD, $LoginMode;
-EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'$key', N'LoginMode', @new OUTPUT;
+EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'$SubKey', N'$Name', @old OUTPUT;
+IF ISNULL(@old, -1) <> $Value
+    EXEC master.dbo.xp_instance_regwrite N'HKEY_LOCAL_MACHINE', N'$SubKey', N'$Name', REG_DWORD, $Value;
+EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'$SubKey', N'$Name', @new OUTPUT;
 SELECT @old AS old, @new AS new;
 "@
     $r = Invoke-DbaQuery -SqlInstance $SqlInstance -SqlCredential $SqlCred -EnableException -Query $q
-    if ($r.new -isnot [int] -or $r.new -ne $LoginMode) {
-        throw "LoginMode nach xp_instance_regwrite ist '$($r.new)' statt $LoginMode (Rechte?)"
+    if ($r.new -isnot [int] -or $r.new -ne $Value) {
+        throw "$Name nach xp_instance_regwrite ist '$($r.new)' statt $Value (Rechte?)"
     }
     if ($r.old -is [int]) { return $r.old } else { return 0 }
+}
+
+function Set-SqlLoginModeTsql {
+    param([string]$SqlInstance, [int]$LoginMode, $SqlCred)
+    Set-SqlInstanceRegDword -SqlInstance $SqlInstance -SubKey 'Software\Microsoft\MSSQLServer\MSSQLServer' `
+        -Name 'LoginMode' -Value $LoginMode -SqlCred $SqlCred
 }
 
 function Set-SqlLoginModeRemoting {
@@ -1419,6 +1423,92 @@ function Restart-SqlServiceScm {
     }
 }
 
+function Restart-SqlService {
+    # Erst über den Dienststeuerungs-Manager, PSRemoting nur als Fallback.
+    # Wirft mit beiden Fehlermeldungen, wenn keiner der Wege klappt.
+    param([string]$ComputerName, [string]$ServiceName, [System.Windows.Forms.RichTextBox]$Rtb)
+    try {
+        Restart-SqlServiceScm -ComputerName $ComputerName -ServiceName $ServiceName -Rtb $Rtb
+    } catch {
+        $scmErr = $_
+        try {
+            Invoke-Command -ComputerName $ComputerName -ErrorAction Stop -ArgumentList $ServiceName -ScriptBlock {
+                param($svcName)
+                $deps = @(Get-Service -Name $svcName -DependentServices | Where-Object { $_.Status -eq 'Running' })
+                Restart-Service -Name $svcName -Force -ErrorAction Stop
+                foreach ($d in $deps) { Start-Service -Name $d.Name -ErrorAction SilentlyContinue }
+            }
+        } catch {
+            throw "Dienst-Neustart fehlgeschlagen (Dienststeuerung: $scmErr | PSRemoting: $_)"
+        }
+    }
+}
+
+function Enable-SqlHadr {
+    # HADR ist keine sp_configure-Option: der Schalter HADR_Enabled liegt in der
+    # Instanz-Registry (so setzt ihn auch der SQL Server Configuration Manager) und
+    # wirkt erst nach einem Dienst-Neustart. Danach per SERVERPROPERTY prüfen.
+    param($Node, $SqlCred, [System.Windows.Forms.RichTextBox]$Rtb)
+    $parts    = Get-SqlInstanceParts $Node.SqlInstance
+    $hostName = if ($Node.Hostname) { $Node.Hostname } else { ($Node.SqlInstance -split '\\')[0] }
+    Set-SqlInstanceRegDword -SqlInstance $Node.SqlInstance -SubKey 'Software\Microsoft\MSSQLServer\MSSQLServer\HADR' `
+        -Name 'HADR_Enabled' -Value 1 -SqlCred $SqlCred | Out-Null
+    Write-RtfInfo -Rtb $Rtb -Msg "  $($Node.SqlInstance): HADR_Enabled = 1 gesetzt, Dienst-Neustart ($($parts.Service)) ..."
+    Restart-SqlService -ComputerName $hostName -ServiceName $parts.Service -Rtb $Rtb
+    if (-not (Wait-SqlInstanceReady -SqlInstance $Node.SqlInstance -SqlCred $SqlCred)) {
+        throw "SQL Server nach 2 Minuten noch nicht erreichbar"
+    }
+    $on = (Invoke-DbaQuery -SqlInstance $Node.SqlInstance -SqlCredential $SqlCred -EnableException `
+        -Query "SELECT CAST(SERVERPROPERTY('IsHadrEnabled') AS int) AS v").v
+    if ($on -ne 1) { throw "HADR nach dem Neustart nicht aktiv (IsHadrEnabled = $on) – ist der Node Mitglied des WSFC-Clusters?" }
+}
+
+$script:vcoToEnable = @()   # AD-Computerobjekte, die durch Löschen von Cluster-Ressourcen deaktiviert wurden
+
+function Get-ListenerNetworkName {
+    # DNS-Namen der Netzwerknamen-Ressourcen einer Cluster-Rolle (AG-Listener)
+    param([string]$GroupName)
+    Get-ClusterResource -ErrorAction SilentlyContinue |
+        Where-Object { $_.OwnerGroup.Name -eq $GroupName -and $_.ResourceType.Name -eq 'Network Name' } |
+        ForEach-Object { (Get-ClusterParameter -InputObject $_ -Name DnsName -ErrorAction SilentlyContinue).Value } |
+        Where-Object { $_ }
+}
+
+function Remove-OrphanListenerResource {
+    # Nur aufrufen, wenn SQL für die AG KEINEN Listener kennt: dann sind Netzwerkname- und
+    # IP-Ressourcen in der AG-Rolle Reste eines fehlgeschlagenen ADD LISTENER. Gibt $true
+    # zurück, wenn etwas entfernt wurde.
+    param([string]$GroupName, [System.Windows.Forms.RichTextBox]$Rtb)
+    $res = @(Get-ClusterResource -ErrorAction SilentlyContinue |
+        Where-Object { $_.OwnerGroup.Name -eq $GroupName -and @('Network Name', 'IP Address', 'IPv6 Address') -contains $_.ResourceType.Name } |
+        Sort-Object { if ($_.ResourceType.Name -eq 'Network Name') { 0 } else { 1 } })   # Netzwerkname hängt von der IP ab
+    if ($res.Count -eq 0) { return $false }
+    $removed = $false
+    foreach ($r in $res) {
+        try {
+            Remove-ClusterResource -InputObject $r -Force -ErrorAction Stop
+            Write-RtfWarn -Rtb $Rtb -Msg "  Verwaiste Cluster-Ressource '$($r.Name)' ($($r.ResourceType.Name)) entfernt."
+            $removed = $true
+        } catch {
+            Write-RtfError -Rtb $Rtb -Msg "  Verwaiste Cluster-Ressource '$($r.Name)' nicht entfernt – $_. Bitte im Failovercluster-Manager löschen."
+        }
+    }
+    return $removed
+}
+
+function Write-VcoDisabledHint {
+    # Beim Löschen einer Netzwerknamen-Ressource deaktiviert der Cluster das zugehörige
+    # AD-Computerobjekt. Ein neuer Listener mit dem Namen scheitert dann mit 0x533
+    # ("account is currently disabled"), bis das AD-Team es wieder aktiviert (oder löscht).
+    param([string[]]$Names, [System.Windows.Forms.RichTextBox]$Rtb)
+    $n = @($Names | Where-Object { $_ } | Sort-Object -Unique)
+    if ($n.Count -eq 0) { return }
+    $cno = try { (Get-Cluster -ErrorAction Stop).Name } catch { '<Clustername>' }
+    $script:vcoToEnable = @(@($script:vcoToEnable) + $n | Sort-Object -Unique)
+    Write-RtfWarn -Rtb $Rtb -Msg "  AD-Team: Computerobjekt(e) $($n -join ', ') aktivieren oder löschen. Das Cluster-Konto '$cno`$' braucht Vollzugriff darauf (bzw. 'Computerobjekte erstellen' in der OU)."
+    Write-RtfWarn -Rtb $Rtb -Msg "  Grund: Beim Entfernen der Cluster-Ressource deaktiviert der Cluster das AD-Objekt; ein Listener mit diesem Namen scheitert sonst mit 0x533."
+}
+
 function Set-SqlLoginMode {
     # LoginMode 1 = nur Windows-Auth, 2 = Mixed-Mode. Ändert die Registry der Instanz und
     # startet den Dienst samt abhängiger Dienste (SQL Agent) neu. Gibt den alten Wert zurück.
@@ -1445,26 +1535,16 @@ function Set-SqlLoginMode {
 
     Write-RtfInfo -Rtb $Rtb -Msg "  $($Node.SqlInstance): LoginMode $old -> $LoginMode ($via), Dienst-Neustart ($($parts.Service)) ..."
     try {
-        Restart-SqlServiceScm -ComputerName $hostName -ServiceName $parts.Service -Rtb $Rtb
+        Restart-SqlService -ComputerName $hostName -ServiceName $parts.Service -Rtb $Rtb
     } catch {
-        $scmErr = $_
+        $restartErr = "$_"
         try {
-            Invoke-Command -ComputerName $hostName -ErrorAction Stop -ArgumentList $parts.Service -ScriptBlock {
-                param($svcName)
-                $deps = @(Get-Service -Name $svcName -DependentServices | Where-Object { $_.Status -eq 'Running' })
-                Restart-Service -Name $svcName -Force -ErrorAction Stop
-                foreach ($d in $deps) { Start-Service -Name $d.Name -ErrorAction SilentlyContinue }
-            }
+            if ($via -eq 'T-SQL') { Set-SqlLoginModeTsql -SqlInstance $Node.SqlInstance -LoginMode $old -SqlCred $SqlCred | Out-Null }
+            else { Set-SqlLoginModeRemoting -Node $Node -LoginMode $old | Out-Null }
         } catch {
-            $restartErr = "Dienst-Neustart fehlgeschlagen (Dienststeuerung: $scmErr | PSRemoting: $_)"
-            try {
-                if ($via -eq 'T-SQL') { Set-SqlLoginModeTsql -SqlInstance $Node.SqlInstance -LoginMode $old -SqlCred $SqlCred | Out-Null }
-                else { Set-SqlLoginModeRemoting -Node $Node -LoginMode $old | Out-Null }
-            } catch {
-                throw "$restartErr. LoginMode steht in der Registry auf $LoginMode, Zurücksetzen auf $old fehlgeschlagen – $_"
-            }
-            throw "$restartErr. LoginMode wieder auf $old gesetzt."
+            throw "$restartErr. LoginMode steht in der Registry auf $LoginMode, Zurücksetzen auf $old fehlgeschlagen – $_"
         }
+        throw "$restartErr. LoginMode wieder auf $old gesetzt."
     }
     if (-not (Wait-SqlInstanceReady -SqlInstance $Node.SqlInstance -SqlCred $SqlCred)) {
         # Z.B. Node per Windows-Auth gar nicht erreichbar: Neustart ist erfolgt, nur nicht prüfbar
@@ -1743,36 +1823,53 @@ function Remove-SetupCredential {
     )
     if (-not $script:setupLoginName) { return }
 
+    # Policy zuerst wieder aktivieren, solange das temporäre Login noch anmelden kann
+    # (sie prüft nur CREATE/ALTER LOGIN, das DROP danach blockiert sie nicht)
+    Set-PbmPolicy -Enable $true -Nodes $script:setupLoginNodes -SqlCred $SqlCred -Rtb $Rtb
+
     Write-RtfInfo -Rtb $Rtb -Msg "  Temporäres Login '$($script:setupLoginName)' wird entfernt ..."
-    $dropQuery = "IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '$($script:setupLoginName)') DROP LOGIN [$($script:setupLoginName)]"
+    # Ein Login mit offenen Sitzungen lässt sich nicht löschen ("currently logged in"), und
+    # die eigenen gepoolten Verbindungen des Tools zählen mit: erst alle Sitzungen beenden.
+    # Das Login kann sich nicht selbst löschen, deshalb zuerst per Windows-Auth.
+    $dropQuery = @"
+DECLARE @k nvarchar(max) = N'';
+SELECT @k += N'KILL ' + CAST(session_id AS nvarchar(10)) + N';'
+FROM sys.dm_exec_sessions WHERE login_name = N'$($script:setupLoginName)' AND session_id <> @@SPID;
+EXEC (@k);
+IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'$($script:setupLoginName)')
+    DROP LOGIN [$($script:setupLoginName)];
+"@
+    try { [System.Data.SqlClient.SqlConnection]::ClearAllPools() } catch { }
+    try { [Microsoft.Data.SqlClient.SqlConnection]::ClearAllPools() } catch { }
 
     foreach ($instance in $script:setupLoginNodes) {
         $targetHost = ($instance -split '\\')[0]
-
-        # Erst per SQL-Auth versuchen, dann Fallback auf PSRemoting
+        $errs = @()
         $removed = $false
-        try {
-            Invoke-DbaQuery -SqlInstance $instance -SqlCredential $SqlCred `
-                -Query $dropQuery -ErrorAction Stop
-            Write-RtfSuccess -Rtb $Rtb -Msg "    '$instance': Login entfernt."
-            $removed = $true
-        } catch { }
+        foreach ($attempt in @(@{ Cred = $null; Via = 'Windows-Auth' }, @{ Cred = $SqlCred; Via = 'temporäres Login' })) {
+            if ($removed -or ($attempt.Via -ne 'Windows-Auth' -and -not $attempt.Cred)) { continue }
+            try {
+                Invoke-DbaQuery -SqlInstance $instance -SqlCredential $attempt.Cred -EnableException -Query $dropQuery
+                Write-RtfSuccess -Rtb $Rtb -Msg "    '$instance': Login entfernt ($($attempt.Via))."
+                $removed = $true
+            } catch { $errs += "$($attempt.Via): $($_.Exception.Message)" }
+        }
 
         if (-not $removed) {
             try {
                 Invoke-Command -ComputerName $targetHost -ErrorAction Stop -ScriptBlock {
                     param($inst, $q)
-                    sqlcmd -S $inst -E -Q $q 2>&1 | Out-Null
-                } -ArgumentList $instance, $dropQuery
+                    sqlcmd -S $inst -E -b -Q $q 2>&1
+                    if ($LASTEXITCODE -ne 0) { throw "sqlcmd Exit-Code $LASTEXITCODE" }
+                } -ArgumentList $instance, $dropQuery | Out-Null
                 Write-RtfSuccess -Rtb $Rtb -Msg "    '$instance': Login entfernt (via PSRemoting)."
             } catch {
-                Write-RtfWarn -Rtb $Rtb -Msg "    '$instance': Login konnte nicht entfernt werden – bitte manuell prüfen: $_"
+                $errs += "PSRemoting: $($_.Exception.Message)"
+                Write-RtfWarn -Rtb $Rtb -Msg "    '$instance': Login konnte nicht entfernt werden – $($errs -join ' | ')"
+                Write-RtfWarn -Rtb $Rtb -Msg "    Bitte auf '$instance' als sysadmin ausführen: DROP LOGIN [$($script:setupLoginName)];"
             }
         }
     }
-
-    # Policy nach Login-Entfernung wieder aktivieren
-    Set-PbmPolicy -Enable $true -Nodes $script:setupLoginNodes -SqlCred $SqlCred -Rtb $Rtb
 
     $script:setupLoginName  = $null
     $script:setupLoginNodes = @()
@@ -2089,49 +2186,15 @@ function Invoke-AlwaysOnSteps {
     Write-RtfSection -Rtb $Rtb -Msg 'Schritt 2: HADR auf allen Nodes aktivieren'
     foreach ($nc in $activeNodes) {
         try {
-            # HADR-Status per T-SQL
-            $hadrResult = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                -Query 'SELECT value_in_use FROM sys.configurations WHERE name = ''hadr enabled''' `
-                -ErrorAction SilentlyContinue | Select-Object -First 1
-            $hadrEnabled = ($hadrResult -and $hadrResult.value_in_use -eq 1)
+            # HADR-Status: 'hadr enabled' gibt es in sys.configurations nicht (früher lief
+            # deshalb bei jedem Lauf ein unnötiger Dienst-Neustart), maßgeblich ist SERVERPROPERTY.
+            $hadrEnabled = (Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -EnableException `
+                -Query "SELECT CAST(SERVERPROPERTY('IsHadrEnabled') AS int) AS v").v -eq 1
 
             if (-not $hadrEnabled) {
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): HADR wird aktiviert ..."
-                # show advanced options in separatem Aufruf – RECONFIGURE muss wirksam sein
-                # bevor sp_configure 'hadr enabled' aufgerufen wird
-                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop `
-                    -Query "EXEC sp_configure 'show advanced options', 1; RECONFIGURE;"
-                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop `
-                    -Query "EXEC sp_configure 'hadr enabled', 1; RECONFIGURE;"
-
-                $svcName = if ($nc.SqlInstance -match '\\') {
-                    'MSSQL$' + ($nc.SqlInstance -split '\\')[1]
-                } else { 'MSSQLSERVER' }
-                $wmiSvc = Get-WmiObject -ComputerName $nc.Hostname -Class Win32_Service `
-                          -Filter "Name='$svcName'" -ErrorAction SilentlyContinue
-                if ($wmiSvc) {
-                    $wmiSvc.StopService() | Out-Null
-                    Start-Sleep -Seconds 5
-                    $wmiSvc.StartService() | Out-Null
-
-                    # Warten bis SQL Server wirklich bereit ist – nicht nur gestartet
-                    Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Warte auf SQL Server Bereitschaft ..."
-                    $ready = $false
-                    for ($w = 1; $w -le 24; $w++) {  # max. 2 Minuten
-                        Start-Sleep -Seconds 5
-                        try {
-                            $ping = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                                -Query 'SELECT 1 AS ok' -ErrorAction Stop |
-                                Select-Object -First 1
-                            if ($ping.ok -eq 1) { $ready = $true; break }
-                        } catch { }
-                    }
-                    if ($ready) {
-                        Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): HADR aktiviert – SQL Server bereit."
-                    } else {
-                        Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): SQL Server nach 2 Minuten noch nicht erreichbar."
-                    }
-                }
+                Enable-SqlHadr -Node $nc -SqlCred $sqlCred -Rtb $Rtb
+                Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): HADR aktiviert – SQL Server bereit."
             } else {
                 Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): HADR bereits aktiv – übersprungen."
             }
@@ -2160,7 +2223,7 @@ function Invoke-AlwaysOnSteps {
                 # Wir verwenden das Service-Konto wenn bekannt, sonst suchen wir einen gültigen sysadmin
                 # (handhabe: 'sa' könnte umbenannt oder deaktiviert sein)
                 $epOwner = Get-ValidSysAdminLogin -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -PreferredLogin $Config.ServiceAccount
-                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -ErrorAction Stop -Query @"
+                Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -EnableException -Query @"
 CREATE ENDPOINT [HADR_Endpoint]
     AUTHORIZATION [$epOwner]
     STATE = STARTED
@@ -2319,7 +2382,7 @@ CREATE ENDPOINT [HADR_Endpoint]
             -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $dbCheck) {
             Write-RtfInfo -Rtb $Rtb -Msg "  Datenbank wird angelegt ..."
-            Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -ErrorAction Stop `
+            Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -EnableException `
                 -Query "CREATE DATABASE [$($Config.TestDatabase)];"
             Write-RtfSuccess -Rtb $Rtb -Msg "  Datenbank '$($Config.TestDatabase)' erstellt."
         } else {
@@ -2328,14 +2391,14 @@ CREATE ENDPOINT [HADR_Endpoint]
 
         # Recovery-Modell auf FULL setzen
         Write-RtfInfo -Rtb $Rtb -Msg "  Recovery-Modell wird auf FULL gesetzt ..."
-        Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -ErrorAction Stop `
+        Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -EnableException `
             -Query "ALTER DATABASE [$($Config.TestDatabase)] SET RECOVERY FULL;"
         Write-RtfSuccess -Rtb $Rtb -Msg "  Recovery-Modell: FULL"
 
         # Initial-Backup per T-SQL
         Write-RtfInfo -Rtb $Rtb -Msg "  Initiales Full-Backup wird erstellt ..."
         $backupFile = "$($Config.BackupShare)\$($Config.TestDatabase)_init.bak"
-        Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -ErrorAction Stop `
+        Invoke-DbaQuery -SqlInstance $primaryInstance -SqlCredential $sqlCred -EnableException `
             -Query "BACKUP DATABASE [$($Config.TestDatabase)] TO DISK = N'$backupFile' WITH INIT, STATS = 10;"
         Write-RtfSuccess -Rtb $Rtb -Msg "  Backup erfolgreich: $backupFile"
     } catch {
@@ -2379,32 +2442,50 @@ CREATE ENDPOINT [HADR_Endpoint]
 
                 # 1. WSFC-Gruppe offline nehmen und löschen
                 try {
+                    # Netzwerknamen merken: beim Löschen deaktiviert der Cluster deren
+                    # AD-Computerobjekte, ein neuer Listener mit dem Namen scheitert dann (0x533)
+                    $vcoNames = @(Get-ListenerNetworkName -GroupName $agName)
                     $wsfcGroup | Stop-ClusterGroup -ErrorAction SilentlyContinue | Out-Null
                     Start-Sleep -Seconds 2
                     Remove-ClusterGroup -Name $agName -RemoveResources -Force -ErrorAction Stop
                     Write-RtfSuccess -Rtb $Rtb -Msg "  WSFC-Gruppe '$agName' gelöscht."
+                    Write-VcoDisabledHint -Names $vcoNames -Rtb $Rtb
                 } catch {
                     Write-RtfWarn -Rtb $Rtb -Msg "  WSFC-Gruppe konnte nicht gelöscht werden: $_"
                 }
 
                 # 2. Registry-Key HadrAgNameToldMap auf allen Nodes bereinigen
                 # Dieser Key mappt AG-Namen auf WSFC-Gruppen-IDs und verhindert Neuanlage
+                # Erst über die Remote-Registry (kein WinRM), PSRemoting nur als Fallback.
                 foreach ($nc in $activeNodes) {
                     try {
-                        Invoke-Command -ComputerName $nc.Hostname -ErrorAction Stop -ScriptBlock {
-                            $regPath = 'HKLM:\Cluster\HadrAgNameToldMap'
-                            if (Test-Path $regPath) {
-                                $props = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
-                                $props.PSObject.Properties |
-                                    Where-Object { $_.Name -notlike 'PS*' -and $_.Name -eq $using:agName } |
-                                    ForEach-Object {
-                                        Remove-ItemProperty -Path $regPath -Name $_.Name -ErrorAction SilentlyContinue
-                                    }
+                        $hive = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('LocalMachine', $nc.Hostname)
+                        try {
+                            $key = $hive.OpenSubKey('Cluster\HadrAgNameToldMap', $true)
+                            if ($key) {
+                                if ($key.GetValueNames() -contains $agName) { $key.DeleteValue($agName) }
+                                $key.Close()
                             }
-                        }
+                        } finally { $hive.Close() }
                         Write-RtfSuccess -Rtb $Rtb -Msg "  Registry HadrAgNameToldMap auf '$($nc.Hostname)' bereinigt."
                     } catch {
-                        Write-RtfWarn -Rtb $Rtb -Msg "  Registry auf '$($nc.Hostname)' nicht bereinigt: $_"
+                        $regErr = $_.Exception.Message
+                        try {
+                            Invoke-Command -ComputerName $nc.Hostname -ErrorAction Stop -ScriptBlock {
+                                $regPath = 'HKLM:\Cluster\HadrAgNameToldMap'
+                                if (Test-Path $regPath) {
+                                    $props = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+                                    $props.PSObject.Properties |
+                                        Where-Object { $_.Name -notlike 'PS*' -and $_.Name -eq $using:agName } |
+                                        ForEach-Object {
+                                            Remove-ItemProperty -Path $regPath -Name $_.Name -ErrorAction SilentlyContinue
+                                        }
+                                }
+                            }
+                            Write-RtfSuccess -Rtb $Rtb -Msg "  Registry HadrAgNameToldMap auf '$($nc.Hostname)' bereinigt (via PSRemoting)."
+                        } catch {
+                            Write-RtfWarn -Rtb $Rtb -Msg "  Registry auf '$($nc.Hostname)' nicht bereinigt: Remote-Registry: $regErr | PSRemoting: $_"
+                        }
                     }
                 }
                 Start-Sleep -Seconds 3
@@ -2550,10 +2631,19 @@ REPLICA ON
             $lsnCount = ($lsnOut | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1) -replace '\s',''
 
             if ($lsnCount -ne '1') {
-                if ($Config.ListenerIP -and $Config.ListenerPort) {
+                $subnetMask = if ($Config.ListenerSubnetMask) { $Config.ListenerSubnetMask } else { '255.255.255.0' }
+                $lsnCreateSql = "ALTER AVAILABILITY GROUP [$($Config.AGName)] ADD LISTENER N'$($Config.ListenerName)' (WITH IP ((N'$($Config.ListenerIP)', N'$subnetMask')), PORT = $($Config.ListenerPort));"
+                # SQL kennt keinen Listener, der Cluster hat aber noch Netzwerkname/IP in der
+                # AG-Rolle: Rest eines fehlgeschlagenen Versuchs (sonst Msg 41057 "already exists").
+                # Das Entfernen deaktiviert das AD-Computerobjekt; ein Neuanlegen im selben Lauf
+                # scheitert daher sicher (0x533) und hinterlässt den nächsten Rest -> erst AD-Team.
+                $orphanNames = @(Get-ListenerNetworkName -GroupName $Config.AGName)
+                if (Remove-OrphanListenerResource -GroupName $Config.AGName -Rtb $Rtb) {
+                    Write-VcoDisabledHint -Names (@($orphanNames) + $Config.ListenerName) -Rtb $Rtb
+                    Write-RtfWarn -Rtb $Rtb -Msg "  Listener wird in diesem Lauf NICHT angelegt. Nach der AD-Freigabe das Tool erneut starten oder auf '$primaryInstance' ausführen:"
+                    Write-RtfWarn -Rtb $Rtb -Msg "    $lsnCreateSql"
+                } elseif ($Config.ListenerIP -and $Config.ListenerPort) {
                     Write-RtfInfo -Rtb $Rtb -Msg "  Listener wird angelegt ..."
-                    $subnetMask = if ($Config.ListenerSubnetMask) { $Config.ListenerSubnetMask } else { '255.255.255.0' }
-                    $lsnCreateSql = "ALTER AVAILABILITY GROUP [$($Config.AGName)] ADD LISTENER N'$($Config.ListenerName)' (WITH IP ((N'$($Config.ListenerIP)', N'$subnetMask')), PORT = $($Config.ListenerPort));"
                     if ($sqlCred) {
                         $lsnCreate = & sqlcmd -S $primaryInstance -U $sqlCred.UserName `
                             -P $sqlCred.GetNetworkCredential().Password `
@@ -2565,6 +2655,12 @@ REPLICA ON
                         Write-RtfSuccess -Rtb $Rtb -Msg "  Listener '$($Config.ListenerName)' ($($Config.ListenerIP):$($Config.ListenerPort)) erstellt."
                     } else {
                         Write-RtfError -Rtb $Rtb -Msg "  Listener-Anlage fehlgeschlagen: $($lsnCreate -join ' ')"
+                        Write-RtfWarn  -Rtb $Rtb -Msg "  Mögliche Ursachen: AD-Computerobjekt '$($Config.ListenerName)' deaktiviert (Cluster-Fehler 0x533, z. B. nach dem Löschen einer früheren Listener-Ressource) oder dem Cluster-Konto fehlen Rechte in der OU. Den genauen Code zeigt das Ereignisprotokoll 'FailoverClustering' zur Ressource '$($Config.AGName)_$($Config.ListenerName)'."
+                        # Rest des Fehlversuchs sofort entfernen, damit der nächste Versuch nicht an 41057 scheitert
+                        if (Remove-OrphanListenerResource -GroupName $Config.AGName -Rtb $Rtb) {
+                            Write-VcoDisabledHint -Names @($Config.ListenerName) -Rtb $Rtb
+                        }
+                        Write-RtfWarn  -Rtb $Rtb -Msg "  Nach der AD-Freigabe das Tool erneut starten oder auf '$primaryInstance' ausführen: $lsnCreateSql"
                     }
                 } else {
                     Write-RtfWarn -Rtb $Rtb -Msg "  Listener-IP oder -Port fehlen – übersprungen."
@@ -2982,6 +3078,12 @@ WHERE ag.name = N'$($Config.AGName)'
     }
     # Mixed-Mode, den das Tool eingeschaltet hat, wieder auf nur Windows-Auth stellen
     Restore-SqlLoginMode -AGName $Config.AGName -PrimaryInstance $primaryInstance -Rtb $Rtb
+
+    if (@($script:vcoToEnable).Count -gt 0) {
+        Write-RtfSection -Rtb $Rtb -Msg 'Offen: AD-Computerobjekte'
+        Write-RtfWarn -Rtb $Rtb -Msg "  Deaktiviert durch Entfernen von Cluster-Ressourcen: $($script:vcoToEnable -join ', ') – AD-Team muss sie aktivieren, bevor der Listener angelegt werden kann (Details oben)."
+        $script:vcoToEnable = @()
+    }
 
     # ------------------------------------------------------------------ #
     # Logfile automatisch schreiben                                        #

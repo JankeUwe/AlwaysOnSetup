@@ -147,12 +147,12 @@
 <table>
   <tr><th>Schritt</th><th>Bezeichnung</th><th>Beschreibung</th></tr>
   <tr><td>1</td><td>SQL-Service-Konto</td><td>Optional: Konto und Passwort per WMI auf allen Nodes ändern und Dienst neu starten</td></tr>
-  <tr><td>2</td><td>HADR aktivieren</td><td>Always On per <code>sp_configure 'hadr enabled', 1</code> auf allen Nodes; Dienst-Neustart mit aktivem Bereitschaftstest</td></tr>
+  <tr><td>2</td><td>HADR aktivieren</td><td>Prüfung per <code>SERVERPROPERTY('IsHadrEnabled')</code>; nur wenn aus: <code>HADR_Enabled</code> in der Instanz-Registry (per <code>xp_instance_regwrite</code>), Dienst-Neustart über den Dienststeuerungs-Manager, danach erneute Prüfung</td></tr>
   <tr><td>3</td><td>Endpoint erstellen</td><td>Datenbankspiegelungs-Endpoint (Port 5022) per T-SQL anlegen und starten</td></tr>
   <tr><td>4</td><td>CONNECT-Berechtigung</td><td>Windows-Login anlegen, <code>GRANT CONNECT ON ENDPOINT</code> auf alle Nodes</td></tr>
   <tr><td>5</td><td>Testdatenbank</td><td>Datenbank anlegen, Recovery-Modell FULL setzen, initiales Full-Backup erstellen</td></tr>
   <tr><td>6</td><td>Availability Group</td><td>AG per reinem T-SQL (<code>sqlcmd</code>) anlegen, Replicas beitreten, Autoseed aktivieren</td></tr>
-  <tr><td>7</td><td>Listener</td><td>AG-Listener mit IP-Adresse und Port per <code>ALTER AVAILABILITY GROUP</code></td></tr>
+  <tr><td>7</td><td>Listener</td><td>AG-Listener mit IP-Adresse und Port per <code>ALTER AVAILABILITY GROUP</code>; verwaiste Netzwerkname-/IP-Ressourcen eines Fehlversuchs werden entfernt, das deaktivierte AD-Computerobjekt wird für das AD-Team gemeldet</td></tr>
   <tr><td>&ndash;</td><td>Reste bereinigen</td><td>Vor dem Anlegen der Testdatenbank: liegt sie auf einem Node ohne AG und nicht ONLINE (z.B. Secondary im RESTORING nach abgebrochenem Versuch), wird sie gelöscht; ONLINE ohne AG auf einem Secondary wird nur gemeldet</td></tr>
   <tr><td>8</td><td>Status</td><td>Autoseeding der Testdatenbank abwarten (max. 3 Minuten) und Ergebnis je Secondary melden, bei Fehler mit Grund aus <code>sys.dm_hadr_automatic_seeding</code>; AG-Synchronisierungsstatus und Replica-Rollen per DMV ausgeben</td></tr>
   <tr><td>9</td><td>SPN-Prüfung</td><td>Fehlende MSSQLSvc-SPNs erkennen, setspn-Befehle als Textdatei für das AD-Team exportieren</td></tr>
@@ -334,6 +334,16 @@
     <td>Tool bereinigt automatisch: <code>Remove-ClusterGroup</code> + Registry-Key <code>HadrAgNameToldMap</code> auf allen Nodes</td>
   </tr>
   <tr>
+    <td><code>Msg 41057 … WSFC resource … already exists</code> beim Listener</td>
+    <td>Netzwerkname/IP eines fehlgeschlagenen <code>ADD LISTENER</code> liegen noch in der AG-Rolle</td>
+    <td>Tool entfernt sie und legt den Listener im selben Lauf nicht an (siehe nächste Zeile)</td>
+  </tr>
+  <tr>
+    <td>Cluster-Fehler <code>0x533</code> „account is currently disabled“ (Ressource <code>AG_Listener</code>)</td>
+    <td>AD-Computerobjekt des Listeners deaktiviert: das passiert, wenn der Cluster eine Netzwerkname-Ressource löscht</td>
+    <td>AD-Team: Computerobjekt aktivieren oder löschen, Cluster-Konto (CNO) braucht Rechte darauf; danach Tool erneut starten oder das im Protokoll ausgegebene <code>ADD LISTENER</code> ausführen</td>
+  </tr>
+  <tr>
     <td><code>Login failed for user AGSetup_…</code></td>
     <td>SQL Server nicht im Mixed Mode oder Password-Policy blockiert</td>
     <td>Mixed Mode in SSMS prüfen: Server Properties → Security → SQL Server and Windows Authentication mode</td>
@@ -374,8 +384,9 @@
 <p>Das Tool prüft vor der AG-Anlage ob eine verwaiste WSFC-Gruppe existiert und bereinigt automatisch:</p>
 <ol>
   <li><code>Stop-ClusterGroup</code> + <code>Remove-ClusterGroup -RemoveResources -Force</code></li>
-  <li>Registry-Key <code>HKLM:\Cluster\HadrAgNameToldMap</code> auf allen Nodes per <code>Invoke-Command</code> bereinigen</li>
+  <li>Registry-Key <code>HKLM:\Cluster\HadrAgNameToldMap</code> auf allen Nodes über die Remote-Registry bereinigen (PSRemoting nur als Fallback)</li>
 </ol>
+<p>Achtung: Enthielt die Gruppe einen Listener, deaktiviert der Cluster beim Löschen dessen AD-Computerobjekt. Das Tool nennt die betroffenen Objekte; ohne Freigabe durch das AD-Team scheitert der neue Listener mit <code>0x533</code>.</p>
 
 <h2>Sicherheit</h2>
 <ul>
