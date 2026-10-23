@@ -336,7 +336,7 @@
   <tr>
     <td><code>Msg 41057 … WSFC resource … already exists</code> beim Listener</td>
     <td>Netzwerkname/IP eines fehlgeschlagenen <code>ADD LISTENER</code> liegen noch in der AG-Rolle</td>
-    <td>Tool entfernt sie und legt den Listener im selben Lauf nicht an (siehe nächste Zeile)</td>
+    <td>Tool fragt vor dem Entfernen nach (Vorauswahl „Nein“), entfernt sie nur nach „Ja“ und legt den Listener im selben Lauf nicht an (siehe nächste Zeile)</td>
   </tr>
   <tr>
     <td>Cluster-Fehler <code>0x533</code> „account is currently disabled“ (Ressource <code>AG_Listener</code>)</td>
@@ -386,7 +386,7 @@
   <li><code>Stop-ClusterGroup</code> + <code>Remove-ClusterGroup -RemoveResources -Force</code></li>
   <li>Registry-Key <code>HKLM:\Cluster\HadrAgNameToldMap</code> auf allen Nodes über die Remote-Registry bereinigen (PSRemoting nur als Fallback)</li>
 </ol>
-<p>Achtung: Enthielt die Gruppe einen Listener, deaktiviert der Cluster beim Löschen dessen AD-Computerobjekt. Das Tool nennt die betroffenen Objekte; ohne Freigabe durch das AD-Team scheitert der neue Listener mit <code>0x533</code>.</p>
+<p>Achtung: Enthielt die Gruppe einen Listener, deaktiviert der Cluster beim Löschen dessen AD-Computerobjekt; ohne Freigabe durch das AD-Team scheitert der neue Listener dann mit <code>0x533</code>. Das Tool löscht Netzwerknamen deshalb <strong>nie ohne Rückfrage</strong>: ein Warndialog nennt die betroffenen AD-Objekte, Vorauswahl ist „Nein“.</p>
 
 <h2>Sicherheit</h2>
 <ul>

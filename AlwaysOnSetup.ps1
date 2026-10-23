@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.8'
+$script:Version = '1.3.9'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -1476,13 +1476,19 @@ function Get-ListenerNetworkName {
 
 function Remove-OrphanListenerResource {
     # Nur aufrufen, wenn SQL für die AG KEINEN Listener kennt: dann sind Netzwerkname- und
-    # IP-Ressourcen in der AG-Rolle Reste eines fehlgeschlagenen ADD LISTENER. Gibt $true
-    # zurück, wenn etwas entfernt wurde.
+    # IP-Ressourcen in der AG-Rolle Reste eines fehlgeschlagenen ADD LISTENER.
+    # Gibt 'none' (nichts da), 'kept' (Anwender hat das Löschen abgelehnt) oder
+    # 'removed' zurück. Netzwerknamen werden nur nach ausdrücklichem Ja gelöscht.
     param([string]$GroupName, [System.Windows.Forms.RichTextBox]$Rtb)
     $res = @(Get-ClusterResource -ErrorAction SilentlyContinue |
         Where-Object { $_.OwnerGroup.Name -eq $GroupName -and @('Network Name', 'IP Address', 'IPv6 Address') -contains $_.ResourceType.Name } |
         Sort-Object { if ($_.ResourceType.Name -eq 'Network Name') { 0 } else { 1 } })   # Netzwerkname hängt von der IP ab
-    if ($res.Count -eq 0) { return $false }
+    if ($res.Count -eq 0) { return 'none' }
+    $nn = @(Get-ListenerNetworkName -GroupName $GroupName)
+    if ($nn.Count -gt 0 -and -not (Confirm-NetworkNameRemoval -Names $nn -What "die verwaisten Listener-Ressourcen ($(($res | ForEach-Object Name) -join ', '))")) {
+        Write-RtfWarn -Rtb $Rtb -Msg "  Verwaiste Listener-Ressourcen NICHT gelöscht: $(($res | ForEach-Object Name) -join ', ')."
+        return 'kept'
+    }
     $removed = $false
     foreach ($r in $res) {
         try {
@@ -1493,7 +1499,22 @@ function Remove-OrphanListenerResource {
             Write-RtfError -Rtb $Rtb -Msg "  Verwaiste Cluster-Ressource '$($r.Name)' nicht entfernt – $_. Bitte im Failovercluster-Manager löschen."
         }
     }
-    return $removed
+    if ($removed) { return 'removed' } else { return 'kept' }
+}
+
+function Confirm-NetworkNameRemoval {
+    # Rückfrage vor jedem Löschen einer Netzwerknamen-Ressource: der Cluster deaktiviert
+    # dabei das AD-Computerobjekt, und nur das AD-Team kann es wieder aktivieren.
+    # Vorauswahl "Nein"; nur ein ausdrückliches "Ja" gibt $true zurück.
+    param([string[]]$Names, [string]$What)
+    $msg = "Das Tool möchte $What löschen.`r`n`r`n" +
+           "ACHTUNG: Dabei deaktiviert Windows die AD-Computerobjekte:`r`n    $($Names -join ', ')`r`n`r`n" +
+           "Ein Listener mit diesem Namen funktioniert danach erst wieder, wenn das AD-Team die Objekte aktiviert (Fehler 0x533).`r`n`r`n" +
+           "Nur mit 'Ja' bestätigen, wenn das AD-Team die Objekte anschließend wieder aktivieren kann.`r`n`r`nTrotzdem löschen?"
+    $answer = [System.Windows.Forms.MessageBox]::Show($msg, 'AlwaysOnSetup – AD-Computerobjekte betroffen',
+        [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning,
+        [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+    return ($answer -eq [System.Windows.Forms.DialogResult]::Yes)
 }
 
 function Write-VcoDisabledHint {
@@ -2438,13 +2459,18 @@ CREATE ENDPOINT [HADR_Endpoint]
             # dann CREATE AVAILABILITY GROUP neu anlegen.
             $wsfcGroup = Get-ClusterGroup -Name $agName -ErrorAction SilentlyContinue
             if ($wsfcGroup) {
-                Write-RtfWarn -Rtb $Rtb -Msg "  Verwaiste WSFC-Gruppe '$agName' gefunden – wird bereinigt ..."
+                Write-RtfWarn -Rtb $Rtb -Msg "  Verwaiste WSFC-Gruppe '$agName' gefunden."
+
+                # Enthält sie Netzwerknamen, deaktiviert der Cluster beim Löschen deren
+                # AD-Computerobjekte (ein Listener mit dem Namen scheitert dann mit 0x533).
+                # Das nie ohne ausdrückliche Zustimmung: ohne Ja wird nichts gelöscht.
+                $vcoNames = @(Get-ListenerNetworkName -GroupName $agName)
+                if ($vcoNames.Count -gt 0 -and -not (Confirm-NetworkNameRemoval -Names $vcoNames -What "die verwaiste WSFC-Rolle '$agName'")) {
+                    throw "WSFC-Rolle '$agName' NICHT gelöscht (enthält Netzwerkname(n) $($vcoNames -join ', ')). Ohne Löschen ist keine AG mit diesem Namen möglich: die Rolle nach Rücksprache mit dem AD-Team löschen (Tool erneut starten und mit 'Ja' bestätigen)."
+                }
 
                 # 1. WSFC-Gruppe offline nehmen und löschen
                 try {
-                    # Netzwerknamen merken: beim Löschen deaktiviert der Cluster deren
-                    # AD-Computerobjekte, ein neuer Listener mit dem Namen scheitert dann (0x533)
-                    $vcoNames = @(Get-ListenerNetworkName -GroupName $agName)
                     $wsfcGroup | Stop-ClusterGroup -ErrorAction SilentlyContinue | Out-Null
                     Start-Sleep -Seconds 2
                     Remove-ClusterGroup -Name $agName -RemoveResources -Force -ErrorAction Stop
@@ -2635,13 +2661,17 @@ REPLICA ON
                 $lsnCreateSql = "ALTER AVAILABILITY GROUP [$($Config.AGName)] ADD LISTENER N'$($Config.ListenerName)' (WITH IP ((N'$($Config.ListenerIP)', N'$subnetMask')), PORT = $($Config.ListenerPort));"
                 # SQL kennt keinen Listener, der Cluster hat aber noch Netzwerkname/IP in der
                 # AG-Rolle: Rest eines fehlgeschlagenen Versuchs (sonst Msg 41057 "already exists").
-                # Das Entfernen deaktiviert das AD-Computerobjekt; ein Neuanlegen im selben Lauf
-                # scheitert daher sicher (0x533) und hinterlässt den nächsten Rest -> erst AD-Team.
+                # Das Entfernen deaktiviert das AD-Computerobjekt (nur nach Rückfrage); ein Neuanlegen
+                # im selben Lauf scheitert daher sicher (0x533) und hinterlässt den nächsten Rest.
                 $orphanNames = @(Get-ListenerNetworkName -GroupName $Config.AGName)
-                if (Remove-OrphanListenerResource -GroupName $Config.AGName -Rtb $Rtb) {
+                $orphan = Remove-OrphanListenerResource -GroupName $Config.AGName -Rtb $Rtb
+                if ($orphan -eq 'removed') {
                     Write-VcoDisabledHint -Names (@($orphanNames) + $Config.ListenerName) -Rtb $Rtb
                     Write-RtfWarn -Rtb $Rtb -Msg "  Listener wird in diesem Lauf NICHT angelegt. Nach der AD-Freigabe das Tool erneut starten oder auf '$primaryInstance' ausführen:"
                     Write-RtfWarn -Rtb $Rtb -Msg "    $lsnCreateSql"
+                } elseif ($orphan -eq 'kept') {
+                    Write-RtfWarn -Rtb $Rtb -Msg "  Listener wird NICHT angelegt: verwaiste Listener-Ressourcen in der Rolle '$($Config.AGName)' blockieren ihn (Msg 41057)."
+                    Write-RtfWarn -Rtb $Rtb -Msg "  Ablauf: Ressourcen entfernen, AD-Team aktiviert '$($Config.ListenerName)', dann auf '$primaryInstance': $lsnCreateSql"
                 } elseif ($Config.ListenerIP -and $Config.ListenerPort) {
                     Write-RtfInfo -Rtb $Rtb -Msg "  Listener wird angelegt ..."
                     if ($sqlCred) {
@@ -2657,7 +2687,7 @@ REPLICA ON
                         Write-RtfError -Rtb $Rtb -Msg "  Listener-Anlage fehlgeschlagen: $($lsnCreate -join ' ')"
                         Write-RtfWarn  -Rtb $Rtb -Msg "  Mögliche Ursachen: AD-Computerobjekt '$($Config.ListenerName)' deaktiviert (Cluster-Fehler 0x533, z. B. nach dem Löschen einer früheren Listener-Ressource) oder dem Cluster-Konto fehlen Rechte in der OU. Den genauen Code zeigt das Ereignisprotokoll 'FailoverClustering' zur Ressource '$($Config.AGName)_$($Config.ListenerName)'."
                         # Rest des Fehlversuchs sofort entfernen, damit der nächste Versuch nicht an 41057 scheitert
-                        if (Remove-OrphanListenerResource -GroupName $Config.AGName -Rtb $Rtb) {
+                        if ((Remove-OrphanListenerResource -GroupName $Config.AGName -Rtb $Rtb) -eq 'removed') {
                             Write-VcoDisabledHint -Names @($Config.ListenerName) -Rtb $Rtb
                         }
                         Write-RtfWarn  -Rtb $Rtb -Msg "  Nach der AD-Freigabe das Tool erneut starten oder auf '$primaryInstance' ausführen: $lsnCreateSql"

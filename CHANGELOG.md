@@ -1,5 +1,22 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.9] — 2026-10-23
+
+### Network names are never removed without confirmation
+
+Removing a cluster network name resource makes Windows disable the listener's AD computer
+object, and only the AD team can enable it again. The tool did that on its own when it cleaned
+up a leftover WSFC role before creating the AG, and 1.3.8 also did it for leftover listener
+resources. Now both places show a warning dialog first that names the AD computer objects
+affected; the default button is **No**.
+
+- **No** to the leftover WSFC role: nothing is removed and the AG step stops with a message.
+- **No** to leftover listener resources: nothing is removed, the listener is not created, and
+  the log shows the order of the manual steps (remove resources, AD team enables the object,
+  `ADD LISTENER`).
+- Leftover IP address resources without a network name are still removed without asking; that
+  does not touch AD.
+
 ## [1.3.8] — 2026-10-23
 
 ### Fixes
