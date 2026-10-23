@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.3'
+$script:Version = '1.3.4'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -2547,15 +2547,14 @@ foreach (`$dest in `$otherInstances) {
 }
 "@
 
-                # Job bereits vorhanden?
+                # Job bereits vorhanden? Dann nur Hinweis, vorhandenen Job unverändert lassen.
                 $jobExists = Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
                     -Query "SELECT name FROM msdb.dbo.sysjobs WHERE name = N'$jobName'" `
-                    -ErrorAction SilentlyContinue | Select-Object -First 1
+                    -EnableException | Select-Object -First 1
 
                 if ($jobExists) {
-                    Write-RtfInfo -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job '$jobName' bereits vorhanden – wird aktualisiert."
-                    Remove-DbaAgentJob -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                        -Job $jobName -Confirm:$false -EnableException
+                    Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job '$jobName' bereits vorhanden – Anlage übersprungen, vorhandener Job bleibt unverändert."
+                    continue
                 }
 
                 # Job anlegen
@@ -2580,10 +2579,13 @@ foreach (`$dest in `$otherInstances) {
                     New-DbaAgentSchedule -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
                         -Job $jobName -Schedule $jobSchedule `
                         -FrequencyType Daily -FrequencyInterval 1 `
-                        -StartTime '020000' -EnableException | Out-Null
+                        -StartDate (Get-Date -Format 'yyyyMMdd') -EndDate '99991231' `
+                        -StartTime '020000' -EndTime '235959' -EnableException | Out-Null
                 } else {
-                    Set-DbaAgentJobSchedule -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred `
-                        -Job $jobName -ScheduleName $jobSchedule -Enabled -EnableException | Out-Null
+                    # Zeitplan existiert schon (z.B. von einem früheren Lauf), hängt aber nicht am
+                    # neuen Job – Set-DbaAgentJobSchedule würde ihn nicht finden. Daher anhängen.
+                    Invoke-DbaQuery -SqlInstance $nc.SqlInstance -SqlCredential $sqlCred -EnableException `
+                        -Query "DECLARE @id int = (SELECT TOP 1 schedule_id FROM msdb.dbo.sysschedules WHERE name = N'$jobSchedule' ORDER BY schedule_id); EXEC msdb.dbo.sp_attach_schedule @job_name = N'$jobName', @schedule_id = @id; EXEC msdb.dbo.sp_update_schedule @schedule_id = @id, @enabled = 1;"
                 }
 
                 # Job aktivieren
@@ -2593,7 +2595,11 @@ foreach (`$dest in `$otherInstances) {
                 Write-RtfSuccess -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job '$jobName' angelegt (täglich 02:00)."
 
             } catch {
-                Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job-Anlage fehlgeschlagen – $_"
+                if ("$_" -match 'already exists|bereits vorhanden') {
+                    Write-RtfWarn -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job '$jobName' bereits vorhanden – Anlage übersprungen."
+                } else {
+                    Write-RtfError -Rtb $Rtb -Msg "  $($nc.SqlInstance): Job-Anlage fehlgeschlagen – $_"
+                }
             }
         }
     } catch {

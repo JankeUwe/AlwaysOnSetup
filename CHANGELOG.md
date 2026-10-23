@@ -1,5 +1,23 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.4] — 2026-10-23
+
+### Existing AG sync job is a note, not an error
+
+If the AG sync job (step 8) already exists on a node, the log now shows a yellow note and leaves
+the existing job unchanged. Before, the job was dropped and recreated, and a rerun ended in a
+red error.
+
+### Fixes
+
+- **Schedule creation:** `New-DbaAgentSchedule` (dbatools 2.9) refuses to run without start/end
+  date and end time and failed with "Please enter a start date or use -Force", so the job was
+  created without its daily 02:00 schedule and the step reported an error. Start date, end date
+  and end time are now passed explicitly.
+- **Leftover schedule:** if a schedule with the job's schedule name already exists (from an
+  earlier run), it is attached to the new job with `sp_attach_schedule`. Before,
+  `Set-DbaAgentJobSchedule` looked for it on the new job, where it did not exist.
+
 ## [1.3.3] — 2026-10-23
 
 ### Temporary login password no longer ends up in saved log files
