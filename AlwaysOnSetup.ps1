@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.4'
+$script:Version = '1.3.5'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -2702,13 +2702,43 @@ WHERE ag.name = N'$($Config.AGName)'
         } else {
             Write-RtfInfo -Rtb $Rtb -Msg "  Prüfe SPNs für Konto: $spnAccount"
 
-            # setspn -L gibt alle registrierten SPNs des Kontos zurück
-            $setspnOutput = & setspn -L $spnAccount 2>&1
-            $registeredSpns = $setspnOutput |
-                Where-Object { $_ -match 'MSSQLSvc' } |
-                ForEach-Object { $_.Trim().ToLower() }
+            # setspn -L gibt alle registrierten SPNs des Kontos zurück. Ohne Domänen-Leserecht
+            # (oder ohne setspn.exe) schlägt die Abfrage fehl – das ist kein Setup-Fehler:
+            # dann warnen und alle benötigten SPNs für das AD-Team ausgeben.
+            # EAP lokal auf Continue, sonst macht 2>&1 unter PS 5.1 jede stderr-Zeile zur Ausnahme.
+            $spnQueryOk     = $false
+            $spnQueryError  = ''
+            $registeredSpns = @()
+            try {
+                $eapBefore = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                    $setspnOutput = @(& setspn -L $spnAccount 2>&1 | ForEach-Object { "$_" })
+                    $setspnExit   = $LASTEXITCODE
+                } finally {
+                    $ErrorActionPreference = $eapBefore
+                }
+                # Erfolgreiche Abfrage: Exit 0 und die Kopfzeile "Registered ServicePrincipalNames for ..."
+                # (deutsch: "Registrierte Dienstprinzipalnamen für ...")
+                if ($setspnExit -eq 0 -and ($setspnOutput -match 'ServicePrincipalNames|Dienstprinzipalnamen')) {
+                    $spnQueryOk     = $true
+                    $registeredSpns = @($setspnOutput |
+                        Where-Object { $_ -match 'MSSQLSvc' } |
+                        ForEach-Object { $_.Trim().ToLower() })
+                } else {
+                    $spnQueryError = (($setspnOutput | Where-Object { $_.Trim() }) -join ' ').Trim()
+                    if (-not $spnQueryError) { $spnQueryError = "setspn Exitcode $setspnExit" }
+                }
+            } catch {
+                $spnQueryError = "$_"
+            }
 
-            Write-RtfInfo -Rtb $Rtb -Msg "  Gefundene MSSQLSvc-SPNs: $(if($registeredSpns){"$($registeredSpns.Count)"}else{'keine'})"
+            if ($spnQueryOk) {
+                Write-RtfInfo -Rtb $Rtb -Msg "  Gefundene MSSQLSvc-SPNs: $(if($registeredSpns){"$($registeredSpns.Count)"}else{'keine'})"
+            } else {
+                Write-RtfWarn -Rtb $Rtb -Msg "  SPNs konnten nicht abgefragt werden (fehlendes Domänen-Leserecht?): $spnQueryError"
+                Write-RtfWarn -Rtb $Rtb -Msg "  Vorhandene SPNs sind daher unbekannt – alle benötigten SPNs werden für das AD-Team aufgelistet."
+            }
 
             # Erwartete SPNs berechnen: pro Node je FQDN+Port und Hostname+Port
             # sowie für den Listener
@@ -2744,6 +2774,11 @@ WHERE ag.name = N'$($Config.AGName)'
             }
 
             foreach ($expected in $checkTargets) {
+                if (-not $spnQueryOk) {
+                    Write-RtfWarn -Rtb $Rtb -Msg "  BENÖTIGT  $expected"
+                    $missingSpns.Add($expected)
+                    continue
+                }
                 $found = $registeredSpns | Where-Object { $_ -eq $expected.ToLower() }
                 if ($found) {
                     Write-RtfSuccess -Rtb $Rtb -Msg "  OK  $expected"
@@ -2753,11 +2788,16 @@ WHERE ag.name = N'$($Config.AGName)'
                 }
             }
 
-            # Fehlende SPNs – Ausgabe im Log und Textdatei für AD-Team
+            # Fehlende (bzw. nicht prüfbare) SPNs – Ausgabe im Log und Textdatei für AD-Team
             if ($missingSpns.Count -gt 0) {
                 Write-RtfSection -Rtb $Rtb -Msg "SPN-Befehle – Ausführung durch AD-Team erforderlich"
-                Write-RtfWarn   -Rtb $Rtb -Msg "  $($missingSpns.Count) SPN(s) fehlen. Ohne korrekte SPNs schlägt die"
-                Write-RtfWarn   -Rtb $Rtb -Msg "  Windows-Authentifizierung mit SSPI-Kontextfehler fehl."
+                if ($spnQueryOk) {
+                    Write-RtfWarn -Rtb $Rtb -Msg "  $($missingSpns.Count) SPN(s) fehlen. Ohne korrekte SPNs schlägt die"
+                    Write-RtfWarn -Rtb $Rtb -Msg "  Windows-Authentifizierung mit SSPI-Kontextfehler fehl."
+                } else {
+                    Write-RtfWarn -Rtb $Rtb -Msg "  $($missingSpns.Count) SPN(s) benötigt, Bestand nicht prüfbar. setspn -S legt nur an,"
+                    Write-RtfWarn -Rtb $Rtb -Msg "  was noch fehlt; bereits vorhandene SPNs meldet es als Duplikat."
+                }
                 Write-RtfInfo   -Rtb $Rtb -Msg "  Folgende Befehle müssen durch einen Domänen-Admin ausgeführt werden:"
                 Write-RtfInfo   -Rtb $Rtb -Msg ""
                 foreach ($spn in $missingSpns) {
@@ -2790,8 +2830,15 @@ WHERE ag.name = N'$($Config.AGName)'
                     $adLines.Add('Hintergrund:')
                     $adLines.Add('  Fuer SQL Server AlwaysOn mit Windows-Authentifizierung (Kerberos)')
                     $adLines.Add('  muessen fuer das SQL-Dienstkonto Service Principal Names (SPNs)')
-                    $adLines.Add('  im Active Directory registriert sein. Die folgenden SPNs fehlen')
-                    $adLines.Add('  und muessen durch einen Domänen-Admin gesetzt werden.')
+                    if ($spnQueryOk) {
+                        $adLines.Add('  im Active Directory registriert sein. Die folgenden SPNs fehlen')
+                        $adLines.Add('  und muessen durch einen Domänen-Admin gesetzt werden.')
+                    } else {
+                        $adLines.Add('  im Active Directory registriert sein. Der Bestand konnte vom')
+                        $adLines.Add('  SQL-Server aus nicht abgefragt werden (kein Domänen-Leserecht),')
+                        $adLines.Add('  daher sind ALLE benoetigten SPNs aufgefuehrt. setspn -S legt nur')
+                        $adLines.Add('  fehlende an; bereits vorhandene werden als Duplikat gemeldet.')
+                    }
                     $adLines.Add('')
                     $adLines.Add('Ausfuehren als Domänen-Admin (eine Zeile pro Befehl):')
                     $adLines.Add('-' * 72)

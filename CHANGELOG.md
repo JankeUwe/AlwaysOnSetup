@@ -1,5 +1,20 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.5] — 2026-10-23
+
+### SPN check without domain read access warns and lists all needed SPNs
+
+Step 10 queries the service account's SPNs with `setspn -L`. Without domain read access (or
+without `setspn.exe`) that query fails; because the script runs with
+`$ErrorActionPreference = 'Stop'`, PowerShell 5.1 turned setspn's stderr into an exception and
+the step ended in a red "SPN-Prüfung fehlgeschlagen" without any SPN list. Now a failed query
+is a yellow warning with setspn's message, every needed SPN (per node short name and FQDN, plus
+the listener) is listed as `BENÖTIGT`, and the AD-team file contains all `setspn -S` commands
+with a note that the current state could not be checked (`setspn -S` only adds what is missing
+and reports existing SPNs as duplicates). A query counts as successful only with exit code 0
+and the "Registered ServicePrincipalNames" header, so a silent failure no longer looks like
+"all SPNs missing".
+
 ## [1.3.4] — 2026-10-23
 
 ### Existing AG sync job is a note, not an error
