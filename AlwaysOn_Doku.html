@@ -215,7 +215,7 @@
   <tr><td>Listener-Subnetzmaske</td><td>3 – AG</td><td>Subnetzmaske der Listener-IP (aus Cluster übernommen, Standard: 255.255.255.0)</td></tr>
   <tr><td>Endpoint-Port</td><td>3 – AG</td><td>HADR Endpoint Port (Standard: 5022)</td></tr>
   <tr><td>Failover-Modus</td><td>3 – AG</td><td><code>Automatic</code> = synchron mit auto. Failover; <code>Manual</code> = asynchron</td></tr>
-  <tr><td>Backup-Präferenz</td><td>3 – AG</td><td><code>Primary</code> / <code>Secondary</code> / <code>PreferSecondary</code> / <code>None</code> (Standard: Primary)</td></tr>
+  <tr><td>Backup-Präferenz</td><td>3 – AG</td><td><code>Primary</code> (Standard) / <code>Secondary</code>; Auswahl nur ab SQL Server 2025, bei SQL 2022 und älter fest Primary</td></tr>
   <tr><td>Test-Datenbank</td><td>3 – AG</td><td>Name der in die AG aufzunehmenden Datenbank</td></tr>
   <tr><td>Backup-Share</td><td>4 – Backup</td><td>UNC-Pfad für das initiale Full-Backup</td></tr>
   <tr><td>Service-Konto</td><td>2 – Dienst</td><td>SQL-Dienstkonto (automatisch erkannt, optional änderbar)</td></tr>

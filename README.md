@@ -13,7 +13,7 @@ Temporary Login Management: Creates random SQL login, displays T-SQL block for m
 WSFC Cleanup: Removes orphaned WSFC group entries
 SPN Validation: Generates AD team request file with required setspn commands
 Cluster Settings Backup: Backs up cluster settings before each change
-Backup Preference: Configurable (Primary / Secondary / PreferSecondary / None)
+Backup Preference: Primary (default) / Secondary; selectable only on SQL Server 2025, fixed to Primary on 2022 and older
 AG Sync Job: Creates the SQL Agent job "AG Sync - Logins, Jobs, LinkedServer" on every node (daily 02:00, runs only on the current primary)
 Password Masking: The temporary login's password never reaches a saved log file (masked as ********)
 Minimal dbaTools Usage: Configuration via Invoke-DbaQuery and Connect-DbaInstance; the AG sync job uses Copy-DbaLogin, Copy-DbaAgentJob and Copy-DbaLinkedServer
@@ -47,7 +47,7 @@ AlwaysOnSetup.ps1	Main script (WinForms GUI + automation logic)
 AlwaysOn_Doku.html	Technical documentation
 AlwaysOn_Handbuch.docx	User manual
 Version
-1.3.9 — 2026-10-23 — see CHANGELOG.md for all releases
+1.3.10 — 2026-11-01 — see CHANGELOG.md for all releases
 More Information
 Documentation: www.powershelldba.de/alwaysonsetup/
 Website: www.powershelldba.de
