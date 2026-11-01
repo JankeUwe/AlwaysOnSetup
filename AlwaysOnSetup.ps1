@@ -58,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Script-Version (für Log-Ausgabe)
 # ---------------------------------------------------------------------------
-$script:Version = '1.3.9'
+$script:Version = '1.3.10'
 
 # ---------------------------------------------------------------------------
 # Assemblies laden
@@ -919,6 +919,7 @@ function Get-ClusterAndSqlInfo {
     $sqlInstances   = @()
     $serviceAccount = ''
     $alwaysOnStates = @()
+    $sqlMajor       = 0
 
     foreach ($node in ($nodes | Where-Object { $_ })) {
         try {
@@ -942,7 +943,14 @@ function Get-ClusterAndSqlInfo {
                         -Query "SELECT CAST(SERVERPROPERTY('IsHadrEnabled') AS int) AS v").v -eq 1
                 } catch { }
 
-                $alwaysOnStates += "$($node): $(if($aoEnabled){'Aktiviert'}else{'Deaktiviert'})"
+                # SQL-Hauptversion (16 = 2022, 17 = 2025); kleinste Version aller Nodes zaehlt
+                try {
+                    $major = [int](Invoke-DbaQuery -SqlInstance $instName -EnableException `
+                        -Query "SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS v").v
+                    if ($major -gt 0 -and ($sqlMajor -eq 0 -or $major -lt $sqlMajor)) { $sqlMajor = $major }
+                } catch { }
+
+                $alwaysOnStates +="$($node): $(if($aoEnabled){'Aktiviert'}else{'Deaktiviert'})"
                 Write-RtfInfo -Rtb $Rtb -Msg "$node  –  Dienst: $($svc.DisplayName)  |  Konto: $($svc.StartName)  |  AlwaysOn: $(if($aoEnabled){'AN'}else{'AUS'})"
             } else {
                 Write-RtfWarn -Rtb $Rtb -Msg "$($node): Kein SQL-Engine-Dienst gefunden"
@@ -970,6 +978,7 @@ function Get-ClusterAndSqlInfo {
     $info['OriginalServiceAccount'] = $serviceAccount   # Unveränderter Referenzwert für Änderungsvergleich
     $info['ServicePassword']        = ''
     $info['AlwaysOnStatus'] = $alwaysOnStates -join ' | '
+    $info['SqlMajorVersion'] = $sqlMajor
     $info['EndpointPort']   = 5022
     $info['FailoverMode']   = 'Automatic'   # Automatic | Manual
     $info['TestDatabase']   = 'AlwaysOnTest'
@@ -1030,11 +1039,39 @@ public class BackupPreferenceConverter : StringConverter {
     public override bool GetStandardValuesSupported(ITypeDescriptorContext ctx) { return true; }
     public override bool GetStandardValuesExclusive(ITypeDescriptorContext ctx) { return true; }
     public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext ctx) {
-        return new StandardValuesCollection(new[] { "Primary", "Secondary", "PreferSecondary", "None" });
+        return new StandardValuesCollection(new[] { "Primary", "Secondary" });
     }
 }
 
-public class AgConfig {
+public class AgConfig : ICustomTypeDescriptor {
+    // Kleinste SQL-Hauptversion aller Nodes (0 = unbekannt). Ab 2025 (17) ist Backup auf Secondary waehlbar.
+    [Browsable(false)]
+    public int SqlMajorVersion { get; set; }
+
+    // ---- ICustomTypeDescriptor: Backup-Praeferenz vor SQL 2025 schreibgeschuetzt ----
+    public AttributeCollection GetAttributes() { return TypeDescriptor.GetAttributes(GetType()); }
+    public string GetClassName() { return TypeDescriptor.GetClassName(GetType()); }
+    public string GetComponentName() { return TypeDescriptor.GetComponentName(GetType()); }
+    public TypeConverter GetConverter() { return TypeDescriptor.GetConverter(GetType()); }
+    public EventDescriptor GetDefaultEvent() { return TypeDescriptor.GetDefaultEvent(GetType()); }
+    public PropertyDescriptor GetDefaultProperty() { return TypeDescriptor.GetDefaultProperty(GetType()); }
+    public object GetEditor(Type editorBaseType) { return TypeDescriptor.GetEditor(GetType(), editorBaseType); }
+    public EventDescriptorCollection GetEvents(Attribute[] attributes) { return TypeDescriptor.GetEvents(GetType(), attributes); }
+    public EventDescriptorCollection GetEvents() { return TypeDescriptor.GetEvents(GetType()); }
+    public object GetPropertyOwner(PropertyDescriptor pd) { return this; }
+    public PropertyDescriptorCollection GetProperties() { return GetProperties(null); }
+    public PropertyDescriptorCollection GetProperties(Attribute[] attributes) {
+        PropertyDescriptorCollection src = TypeDescriptor.GetProperties(GetType(), attributes);
+        List<PropertyDescriptor> list = new List<PropertyDescriptor>();
+        foreach (PropertyDescriptor pd in src) {
+            if (pd.Name == "BackupPreference" && SqlMajorVersion < 17)
+                list.Add(TypeDescriptor.CreateProperty(GetType(), pd, new ReadOnlyAttribute(true)));
+            else
+                list.Add(pd);
+        }
+        return new PropertyDescriptorCollection(list.ToArray());
+    }
+
     // ---- Cluster ----
     [Category("1 - Cluster")]
     [DisplayName("Cluster-Name")]
@@ -1096,7 +1133,7 @@ public class AgConfig {
 
     [Category("3 - Availability Group")]
     [DisplayName("Backup-Präferenz")]
-    [Description("Primary = nur Primary; Secondary = bevorzugt Secondary; PreferSecondary = Secondary wenn möglich; None = keine Präferenz")]
+    [Description("Primary = Backups nur auf dem Primary (Default); Secondary = Backups auf dem Secondary. Auswahl erst ab SQL Server 2025 möglich (lizenzkonform), davor fest Primary.")]
     [TypeConverter(typeof(BackupPreferenceConverter))]
     public string BackupPreference { get; set; }
 
@@ -3336,7 +3373,8 @@ function Invoke-LoadData {
         $script:agConfig.AGName          = $rawInfo['AGName']
         $script:agConfig.EndpointPort    = [int]$rawInfo['EndpointPort']
         $script:agConfig.FailoverMode    = $rawInfo['FailoverMode']
-        $script:agConfig.BackupPreference = 'Primary'
+        $script:agConfig.SqlMajorVersion  = [int]$rawInfo['SqlMajorVersion']
+        $script:agConfig.BackupPreference = 'Primary'   # Secondary nur ab SQL 2025 (Major 17) waehlbar
         $script:agConfig.TestDatabase    = $rawInfo['TestDatabase']
         $script:agConfig.BackupShare     = $rawInfo['BackupShare']
         $script:agConfig.ServiceAccount  = $rawInfo['ServiceAccount']

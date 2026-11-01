@@ -1,5 +1,18 @@
 # AlwaysOnSetup — Changelog
 
+## [1.3.10] — 2026-11-01
+
+### Backup preference selectable on SQL Server 2025
+
+The tool always created the AG with backup preference Primary. From SQL Server 2025 on,
+backups on the secondary are possible without a license violation, so the preference is now
+a choice:
+
+- **SQL Server 2022 and older:** the property is read-only and fixed to `Primary`.
+- **SQL Server 2025 (major version 17):** the property is enabled, `Primary` (default) or `Secondary`.
+- The lowest SQL major version of all nodes decides, so a mixed cluster stays on `Primary`.
+- `PreferSecondary` and `None` were removed from the list.
+
 ## [1.3.9] — 2026-10-23
 
 ### Network names are never removed without confirmation
