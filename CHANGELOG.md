@@ -1,5 +1,11 @@
 # AlwaysOnSetup — Changelog
 
+## [Unreleased]
+
+### Published on the PowerShell Gallery
+
+- `Install-Script AlwaysOnSetup`. Added the PSScriptInfo header to AlwaysOnSetup.ps1; README mentions the gallery install.
+
 ## [1.3.10] — 2026-11-01
 
 ### Backup preference selectable on SQL Server 2025
