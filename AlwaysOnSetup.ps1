@@ -1,4 +1,16 @@
 ﻿#Requires -RunAsAdministrator
+<#PSScriptInfo
+.VERSION 1.3.10
+.GUID 3b8e5f2a-6c41-4d7e-9a53-1f0d8c2e7b64
+.AUTHOR Uwe Janke
+.COMPANYNAME dtcSoftware
+.COPYRIGHT (c) 2026 Uwe Janke. MIT License.
+.TAGS SQLServer AlwaysOn AvailabilityGroup WSFC HADR DBA WinForms
+.LICENSEURI https://github.com/JankeUwe/AlwaysOnSetup/blob/main/LICENSE
+.PROJECTURI https://github.com/JankeUwe/AlwaysOnSetup
+.RELEASENOTES https://github.com/JankeUwe/AlwaysOnSetup/blob/main/CHANGELOG.md
+#>
+
 <#
 .SYNOPSIS
     SQL Server AlwaysOn Availability Group Setup Tool
