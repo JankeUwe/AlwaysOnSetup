@@ -17,6 +17,9 @@ Backup Preference: Primary (default) / Secondary; selectable only on SQL Server 
 AG Sync Job: Creates the SQL Agent job "AG Sync - Logins, Jobs, LinkedServer" on every node (daily 02:00, runs only on the current primary)
 Password Masking: The temporary login's password never reaches a saved log file (masked as ********)
 Minimal dbaTools Usage: Configuration via Invoke-DbaQuery and Connect-DbaInstance; the AG sync job uses Copy-DbaLogin, Copy-DbaAgentJob and Copy-DbaLinkedServer
+Installation
+From the PowerShell Gallery: `Install-Script AlwaysOnSetup`, then run `AlwaysOnSetup.ps1` as administrator. The gallery package contains only the script; the repository additionally holds the .ini, documentation and starter.
+
 Prerequisites
 Requirement	Minimum Version
 Windows Server	2022
